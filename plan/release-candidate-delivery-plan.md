@@ -1,6 +1,6 @@
 # 本地封版、GitHub 公开发布与可选预发布计划
 
-> 状态：`COMPLETED`（2026-08-11 Route A Stage 0-5.5 已完成；公开仓库、`rc-20260811.1` tag 和 Release 绑定最终公开提交）
+> 状态：`COMPLETED`（2026-08-11 Route A Stage 0-5.5 已完成；`rc-20260811.1` 因 CodeQL 告警失效，公开仓库、`rc-20260811.2` tag 和 Release 绑定最终公开提交）
 > 基线日期：2026-08-11
 > 推荐路线：先完成 Route A“本地可交付 Release Candidate + GitHub 公开发布”，再决定是否进入 Route B“真实预发布与生产门”
 > 当前事实：阶段 0-6、9 图 UI 高保真和用户肉眼验收已完成；真实供应商、生产外部依赖、生产写执行、部署与发布仍为 `NOT RUN / NOT APPROVED`
@@ -33,12 +33,12 @@
 
 ### 2.2 当前需要收口的工程问题
 
-- 空 `.git/` 已完成只读恢复审计并确认无历史；2026-08-11 已建立新的本地仓库和当前完成基线根提交，尚未配置远程或创建 tag。
+- 空 `.git/` 已完成只读恢复审计并确认无历史；2026-08-11 已安全建立新仓库、净化公开历史，并创建 GitHub public 仓库与 `main`。
 - 前端 ESLint flat config 已补齐；Stage 3 已将 lint、全部前后端、真实基础设施、E2E、AI-live、六视口视觉、供应链、package 与哈希门绑定到 commit `ca297b68993a864229cab274ec412bf434512a30` 并通过。
-- Stage 5.5 为统一 Apache-2.0 元数据而修改评测数据注册器后，旧 Stage 3 候选已失效；2026-08-11 已对当前公开候选树从头重跑全部 Route A 工程门，最终 JAR、dist 和视觉 manifest SHA-256 分别为 `D6983CEE32D120863E2198AF0F5302A93AE7113F55021D95AD7A99CD9E5457B8`、`1108939232ADD39167E9D068F2CF4C2A54CD7806844B95CC2CDBCDFDD513C5DB`、`42851A03E777281309A1064D8EC09ABABC8063484B6FE80379C4ACD2601CD01C`。
+- `rc-20260811.1` 公开后的 CodeQL run `31477640111` 发现 5 个告警，因此该不可移动候选已失效。修复提交 `18030b80238a9aba030843d816952b908526b97c` 的 CodeQL run `31478731800` 两个语言 job 均成功且 open alerts 为 0；随后从头重跑全部 Route A 工程门。当前 JAR、dist 和视觉 manifest SHA-256 分别为 `1FC8FBBB062E236AB5065E37B85F96E70531556EC299CE52F458888C7A39C4A6`、`1108939232ADD39167E9D068F2CF4C2A54CD7806844B95CC2CDBCDFDD513C5DB`、`9E31D3FD60F27A774D0BB7F7AF12F9954A1FC9DB5A749D21ABB663CAFD35DFEE`。
 - 现有测试、JAR 和视觉证据虽然存在，但任何源码、依赖、schema、OpenAPI 或构建配置变化都会使相关旧证据失效；正式封版必须重新生成同一候选的证据。
 - 当前真实模型合同 `RealModelContractIT` 未绑定本候选运行，真实供应商和 PR-01 至 PR-06 仍为 `NOT RUN / NOT APPROVED`。
-- GitHub CLI 当前登录账号为 `muhanking111`；截至 2026-08-11，`muhanking111/ai-student-dormitory-management-system` 不存在。该事实执行前必须重新查询，避免名称被占用或错误创建到其他账号。
+- GitHub CLI 活动账号为 `muhanking111`；公开仓库 `muhanking111/ai-student-dormitory-management-system` 已创建，默认分支为 `main`，发布前后均重新核对 visibility、hash、tag 和 Release target。
 
 ## 3. 路线选择
 
@@ -390,9 +390,9 @@ docs/delivery/
 
 - Apache 官方完整许可证文本逐字一致，SHA-256 `CFC7749B96F63BD31C3C42B5C471BF756814053E847C10F3EB003417BC523D30`；公开范围旧 `INTERNAL_PROJECT_USE` 标识为 0。
 - 前端 lint `177 files / 0 errors / 2706 warnings`、Vitest `519/519`、coverage `87.81/80.17/90.66/91.71`、typecheck/build、npm audit、普通 E2E `72/72`、AI-live `1/1` 和六视口视觉 `1/1` 均 PASS。
-- 后端 `161 reports / 919/919 PASS`；AI line `93.64%`、branch `80.80%`；真实 MySQL/Redis `8/8`、CSRF/OpenAPI/schema/框架兼容/生产样例 `41/41`、Maven runtime OSV `120 dependencies / 0 findings`。
-- 当前公开树 `784 files / 18,701,555 bytes`，当前树 blockers 0，11 张 PNG 元数据 findings 0，Markdown `32 files / 74 links / 0 findings`，npm 480 与 Maven 120 依赖许可证 missing/manual 0。
-- 独立 `security-reviewer` 复核未发现 Apache-2.0 注册器改动或公开文档引入新的安全弱化；当前唯一阻断是旧 4 个本地中间提交中的 8 个 Edge 绝对路径，必须在首次 push 前收敛为净化公开历史并复扫。
+- 后端 `161 reports / 920/920 PASS`；AI line `93.64%`、branch `80.81%`；真实 MySQL/Redis `8/8`、CSRF/OpenAPI/schema/框架兼容/生产样例 `41/41`、Maven runtime OSV `120 dependencies / 0 findings`。
+- 当前树和完整可达公开历史的 secrets、PII、本机路径、生成制品、许可证、版权和敏感元数据 blockers 均为 0；npm 480 与 Maven 120 依赖许可证 missing/manual 0。
+- 独立 `security-reviewer` 复核未发现 CodeQL 修复导致 PII、分页、RBAC、CSRF/SSE、引用 ACL、审批、step-up、审计、状态机或业务写边界回退；复核不是渗透测试。
 
 ### 上传前公开审查
 

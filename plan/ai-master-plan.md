@@ -27,7 +27,7 @@
 | 9 图 UI 高保真落实与复验 | `COMPLETED` | 2026-08-09 Dashboard 圈注的固定类别色、右侧风险层级、待办七列字段和受权限约束的双操作已整改；Stage 6 全新候选链、工程门、独立 UI/安全复核和用户肉眼验收均已完成 |
 | 后端/数据/安全工程验收 | `COMPLETED` | 当前既有后端质量门、真实本地基础设施和安全边界证据继续有效；相关源码变化后必须重跑 |
 | UI 相关前端工程验收 | `COMPLETED` | 当前 Dashboard 反馈整改已通过 Vitest、typecheck、build、治理 `9/9`、Dashboard `8/8`、普通 E2E `72/72`、正式预览、同视口对照、Impeccable detector、两份独立 UI 增量复核、专项安全增量复核和用户肉眼验收 |
-| Route A 本地封版与公开发布 | `COMPLETED` | 2026-08-11 已完成 Stage 0-5.5；项目以 `Apache-2.0` 发布到 [GitHub public 仓库](https://github.com/muhanking111/ai-student-dormitory-management-system)，不可移动 tag `rc-20260811.1` 和公开 Release 与远程默认分支绑定同一最终提交 |
+| Route A 本地封版与公开发布 | `COMPLETED` | 2026-08-11 已完成 Stage 0-5.5；项目以 `Apache-2.0` 发布到 [GitHub public 仓库](https://github.com/muhanking111/ai-student-dormitory-management-system)。`rc-20260811.1` 因 CodeQL 5 个告警已失效；不可移动 tag `rc-20260811.2` 和公开 Release 与远程默认分支绑定同一最终提交 |
 | 生产外部依赖与发布门 | `NOT RUN / NOT APPROVED` | KMS、外部向量/对象/扫描、外部审计锚、供应商正式条款和生产灾备未验收 |
 | 阶段 7 预测模型与学生端 | `OUT OF SCOPE` | 不是本轮未完成项，不得混入生产门清单 |
 

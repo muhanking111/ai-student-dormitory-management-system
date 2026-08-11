@@ -1,7 +1,7 @@
 # AI 验证、评测与发布质量门
 
 > 文档状态：现行唯一验证与验收事实源
-> 验收基准：Route A RC 以 2026-08-11 Apache-2.0 公开候选树的新鲜全门、制品和哈希为准，并由不可移动 tag `rc-20260811.1` 绑定最终公开提交；UI 肉眼验收仍以 2026-08-09 Dashboard 圈注整改后的当前实现与同视口 comparison 为准；更早结果仅保留为历史基线
+> 验收基准：Route A RC 以 2026-08-11 CodeQL 修复提交 `18030b80238a9aba030843d816952b908526b97c` 的新鲜全门、制品和哈希为准，并由不可移动 tag `rc-20260811.2` 绑定最终公开元数据提交；`rc-20260811.1` 已失效。UI 肉眼验收仍以 2026-08-09 Dashboard 圈注整改后的当前实现与同视口 comparison 为准；更早结果仅保留为历史基线
 > 适用范围：AI 智能宿舍阶段 0–6 及其生产发布门
 > 视觉合同：`design/ai-prototypes/` 中 9 张最终 PNG
 
@@ -13,7 +13,7 @@
 | --- | --- | --- |
 | 阶段 0–6 后端/数据/安全能力 | `ENGINEERING COMPLETE` | 控制面、数据合同、安全边界和既有后端证据仍有效；发生相关源码变化后必须重跑 |
 | 9 图 UI 高保真落实与前端全量验收 | `COMPLETED` | 2026-08-09 用户反馈已关闭 Dashboard 三项具体差异；当前工程门、治理回归、独立 UI/安全增量、全量 Stage 6 候选链均通过，用户已确认“看现在ui差不多还可以” |
-| Route A RC 封版与公开发布 | `COMPLETED` | Stage 0-5.5 已完成；Apache-2.0 公开候选树的全量工程门、双模式演示、clean clone、新终端、桌面/移动与异常态验收均 PASS；[GitHub public 仓库](https://github.com/muhanking111/ai-student-dormitory-management-system)、`main`、tag `rc-20260811.1` 和 Release 绑定同一最终提交 |
+| Route A RC 封版与公开发布 | `COMPLETED` | Stage 0-5.5 已完成；Apache-2.0 公开候选树的全量工程门、双模式演示、clean clone、新终端、桌面/移动与异常态验收均 PASS；`rc-20260811.1` 因 CodeQL 告警失效，[GitHub public 仓库](https://github.com/muhanking111/ai-student-dormitory-management-system)、`main`、tag `rc-20260811.2` 和 Release 绑定同一最终提交 |
 | 生产外部依赖与生产演练 | `NOT RUN` | 缺少生产 KMS、外部向量/对象服务、外部审计锚、正式供应商条款及生产灾备等真实环境证据，不能视为通过 |
 | 阶段 7 预测模型与学生端 | `OUT OF SCOPE` | 本轮明确不实施，不是失败，也不是待补测项 |
 
@@ -27,9 +27,9 @@
 
 | 验证项 | 当前结果 | 证据或说明 |
 | --- | --- | --- |
-| 后端 surefire 当前核心套件 | `919/919 PASS` | 2026-08-11 Apache-2.0 公开候选树执行 `mvn -q test` 与 `mvn -q -P ai-coverage verify`；161 reports，`0 failure / 0 error / 0 skipped`。 |
+| 后端 surefire 当前核心套件 | `920/920 PASS` | 2026-08-11 CodeQL 修复提交执行 `mvn -q test` 与 `mvn -q -P ai-coverage verify`；161 reports，`0 failure / 0 error / 0 skipped`。 |
 | 登录 CSRF 专项 | `12/12 PASS` | `CsrfProtectionTest`；覆盖旧 Cookie、Origin/Referer、context path 等回归 |
-| AI 覆盖率 | line `12756/13622 = 93.64%`；branch `6727/8326 = 80.80%` | 2026-08-11 Apache-2.0 公开候选树执行 `mvn -q -P ai-coverage verify`；line/branch 门均为 80% |
+| AI 覆盖率 | line `12766/13633 = 93.64%`；branch `6728/8326 = 80.81%` | 2026-08-11 CodeQL 修复提交执行 `mvn -q -P ai-coverage verify`；line/branch 门均为 80% |
 | 生产配置样例契约 | `1/1 PASS` | `ProductionEnvironmentExampleContractTest`；确保 `.env.example` 覆盖当前 AI 生产安全门读取的主要部署输入 |
 | 真实 MySQL/Redis | `8/8 PASS` | `AiRealInfrastructureIT 6`、`AiUploadRealInfrastructureIT 1`、`RealInfrastructureIT 1` |
 | AI Schema / OpenAPI | `16/16 PASS` | `AiOpenApiContractTest + AiSchemaMigrationInitializerTest`；`55 paths / 60 operations`、`44` 张 `ai_*` 表 |
@@ -37,13 +37,13 @@
 | 真实模型合同 | `NOT RUN / NOT APPROVED` | 本轮 Stage 6 未运行 `RealModelContractIT`；历史 DeepSeek 只读合同不绑定当前候选，也不能替代生产放行 |
 | 独立安全复核 | `P0=0 / P1=0 / P2=0 / P3=0` | 只读复核确认视觉 fixture 未进入生产路径，RBAC、CSRF、SSE、审批、step-up、引用 ACL、PII 与状态机未被本轮整改弱化；该结论不等同重新审计全部后端 |
 | 供应链 | 120 个 Maven runtime 依赖、0 findings | 2026-08-11 OSV 官方 `querybatch`；Netty `4.1.135.Final` 的 `GHSA-558v-64gr-wgg4` 阻断已通过升级到 `4.1.136.Final` 关闭，并对新候选重跑全部 Stage 3 门 |
-| 候选 JAR | `58,030,252` bytes | `backend/target/student-dormitory-management-system-0.1.0.jar`；Apache-2.0 公开候选树的 package 产物 |
-| JAR SHA-256 | `D6983CEE32D120863E2198AF0F5302A93AE7113F55021D95AD7A99CD9E5457B8` | 2026-08-11 当前候选产物复核 |
+| 候选 JAR | `58,030,307` bytes | `backend/target/student-dormitory-management-system-0.1.0.jar`；CodeQL 修复提交的 package 产物 |
+| JAR SHA-256 | `1FC8FBBB062E236AB5065E37B85F96E70531556EC299CE52F458888C7A39C4A6` | 2026-08-11 当前候选产物复核 |
 | Route A 本地演示闭环 | `PASS` | 2026-08-11：`demo-readonly` 与 `demo-approval` 均完成启动、健康、停止、精确 reset、reset 后重启和再次健康/停止；provider 均为 `fake`，写执行分别为 `false/true`，数据库分别为 `student_dormitory_readonly_demo` / `student_dormitory_approval_demo`，Redis DB 分别为 12/13；错误 reset 令牌被拒绝，原有 `3306/6379` 未被停止 |
 | Route A clean clone 演练 | `PASS` | 2026-08-11 从 Stage 5 交付树的临时本地候选克隆到全新 TEMP 目录；初始无 `node_modules`、`backend/target`、`.demo` 或 `.planning`，新 PowerShell 无 Profile、清理项目环境变量后以 `-InstallDependencies` 启动；完整 health PASS，`1366x768` 与 `390x844` 的 Dashboard/维修/公告/风险/审批/审计均 0 横向溢出，移动可见按钮无小于 `44x44`，助手为 `390x844` 全屏 |
 | Route A 异常态演练 | `PASS` | Playwright Stage 5 治理 `9/9 PASS`（AI client 关闭、风险/审批/审计 loading/empty/error/degraded/stale/expired/no-permission、200% 与 reduced motion）；Assistant 撤权终态 `1/1 PASS`；真实停止 clean-demo 后端时前端保留并返回 `/login`，明确显示后端不可用，随后 stop 安全关闭其余自有资源 |
 
-上述覆盖率、测试数量和 JAR 哈希绑定到 2026-08-11 Apache-2.0 公开候选树，并由 tag `rc-20260811.1` 固定最终公开提交；后续若应用源码、依赖、schema、OpenAPI、构建或覆盖率配置发生变化，必须生成新候选并重跑受影响全门。
+上述覆盖率、测试数量和 JAR 哈希绑定到 2026-08-11 CodeQL 修复提交 `18030b80238a9aba030843d816952b908526b97c`，并由 tag `rc-20260811.2` 固定最终公开元数据提交；后续若应用源码、依赖、schema、OpenAPI、构建或覆盖率配置发生变化，必须生成新候选并重跑受影响全门。
 
 ### 2.2 前端、E2E 与视觉
 
@@ -58,9 +58,9 @@
 | 前端依赖审计 | `0 vulnerabilities` | 2026-08-11 Apache-2.0 公开候选树执行 `npm audit --audit-level=high` 退出 `0` |
 | 普通 Playwright | `72/72 PASS` | 2026-08-11 Apache-2.0 公开候选树新鲜执行；`0 skipped / 0 unexpected / 0 flaky`。Stage 6 专用合同仍只由各自独立配置执行，没有删除或弱化断言 |
 | 公告 proposal 完整性专项 | `16/16 PASS` | 覆盖生成后修改、请求期间修改、离开重入、重复生成和提交期间失效 |
-| AI-live | 当前候选 `1/1 PASS`，26.1 秒 | 2026-08-11 全新 `student_dormitory_rc_20260811_final_ai_live_e2e`、`5556/8456`、Redis DB 6、唯一 key prefix、确定性 Fake provider、业务写执行关闭 |
-| AI-live 网络合同 | AI request/response `44/44`，原业务写 `0` | `network-evidence.json` SHA-256 `13F818BAAB0CA0981B94DDABA1C32022EB16133B5F5B280C64DCD85DB76F8C38`；9 条受控关闭均有成功响应；成功截图 SHA-256 `D496B36CAA97E0B58DAD34B3C818748BFC8067B1E714E61D310CF8E105D8D831` |
-| 六视口正式门 / 9 图终检 | `COMPLETED` | Apache-2.0 公开候选树的 `final-rc-20260811-visual`：`132/132` 路由、`19/19` Assistant、`9/9` prototype capture、`1/1` 画廊、`159/159` PNG；源码/原型稳定性违规、API/request/console/page/runtime errors 与 `businessWrites` 均为 0；manifest SHA-256 `42851A03E777281309A1064D8EC09ABABC8063484B6FE80379C4ACD2601CD01C`。2026-08-09 同视口人工验收仍是质感结论依据 |
+| AI-live | 当前候选 `1/1 PASS`，27.5 秒 | 2026-08-11 全新 `student_dormitory_rc_20260811_rc2_ai_live_e2e`、`5656/8556`、Redis DB 10、唯一 key prefix、确定性 Fake provider、业务写执行关闭 |
+| AI-live 网络合同 | AI request/response `44/44`，原业务写 `0` | `network-evidence.json` SHA-256 `29F915384CF700344DC0FDC9B3A8235BA6E7FBE19622CBEF6FD74CCC9F2FECCA`；9 条受控完成连接关闭均有成功响应 |
+| 六视口正式门 / 9 图终检 | `COMPLETED` | CodeQL 修复提交的 `rc-20260811.2-visual`：`132/132` 路由、`19/19` Assistant、`9/9` prototype capture、`1/1` 画廊、`159/159` PNG；源码/原型稳定性违规、未容忍 API request failure、API/console/page/runtime errors 与 `businessWrites` 均为 0；21 个预期请求失败单独记录为 tolerated；manifest SHA-256 `9E31D3FD60F27A774D0BB7F7AF12F9954A1FC9DB5A749D21ABB663CAFD35DFEE`。2026-08-09 同视口人工验收仍是质感结论依据 |
 | 当前同视口终检 | `10/10` comparison 已人工逐张复核 | `stage6-comparison-20260809-dashboard-feedback-l` 含 10 metrics、30 PNG、`60/60` 文件绑定；移动两组 `cover-top`，其余同视口 `stretch`，Assistant 两组均绑定真实 streaming。差异率仅用于定位热区，不作为自动通过阈值 |
 | 阶段 1R 共享壳层收敛 | `PASS`，六视口 `1/1`（8.6 分钟） | 隔离 5215/8115；132 页面、132 layout、132 shell、6/6 Canvas、3 助手、10 captures；错误集合全空、最大溢出 0px；manifest SHA-256 `D0DE75E786B202F84BE922D709E24856A4B3B919E54413F7901D1DED2EF326D7`；仅关闭共享壳层，不代表内容态高保真验收 |
 | 阶段 4 风险/审批/审计内容态 | `PASS`，真实服务 `1/1`（7.9 分钟） | 隔离 `5220/8120`；MySQL `student_dormitory_stage4_current_e2e`、Redis DB 14 / key prefix `ai-live:stage4:8120:20260721-retry1`；9 signals/cases，风险表 5 行完整可见、分页/处置底边 `1002/990 <= 1008`，审批操作底边 `992`，审计 7 类事实/4 步时间线；真实浏览器确认 `actionType=NOTICE_CREATE_DRAFT` 服务端筛选及清除筛选请求；API/console/page/request 错误均为 0；前端治理聚焦 `10 files / 116 tests`，风险几何修复后子集 `2 files / 13 tests`，typecheck/build PASS（Vite 8.1.4，3859 modules transformed）；审批后端扩大回归 `65/65`（含 `AiGovernanceApiTest 9/9`）；manifest SHA-256 `031A130DE4BAAA22EA99E30B78CBA881C61D6C62B389F3C7CF770EAC99BF5925` |
@@ -98,7 +98,7 @@
 
 ### 2.3 当前证据文件
 
-- Route A Stage 5.5 当前树全门：`.planning/20260811-release-candidate-delivery/artifacts/final-frontend-*.json` / `*.log`、`final-backend-*.log` 与最终制品哈希；`.planning/` 只保存本地证据，不进入公开仓库或 Release 附件。
+- Route A Stage 5.5 当前树全门：`.planning/20260811-release-candidate-delivery/artifacts/rc-20260811.2/` 的日志、机器可读摘要与最终制品哈希；`.planning/` 只保存本地证据，不进入公开仓库或 Release 附件。
 - 公开范围审计：`.planning/20260811-release-candidate-delivery/artifacts/stage55-public-audit.json`、`stage55-dependency-license-audit.json`、`stage55-markdown-link-audit.json` 和净化历史后的公开树索引。
 - 历史 Stage 3 manifest：`.planning/20260811-release-candidate-delivery/artifacts/stage3-ca297b6-rc-manifest.json` 仅保留为封版过程基线，不再作为 Apache-2.0 最终公开候选。
 
@@ -120,7 +120,7 @@
 - 供应链：`backend/target/osv-runtime-summary.json`、`backend/target/osv-runtime-querybatch-response.json`
 - 候选产物：`backend/target/student-dormitory-management-system-0.1.0.jar`
 
-当前仓库已建立可用 Git 身份；Route A 最终公开提交由不可移动 tag `rc-20260811.1`、GitHub Release target 和远程默认分支共同绑定。`.planning/` 中的详细运行证据不公开，公开材料只保留脱敏结论、命令范围和制品 SHA-256。
+当前仓库已建立可用 Git 身份；`rc-20260811.1` 因 CodeQL 告警已失效，Route A 最终公开提交由不可移动 tag `rc-20260811.2`、GitHub Release target 和远程默认分支共同绑定。`.planning/` 中的详细运行证据不公开，公开材料只保留脱敏结论、命令范围和制品 SHA-256。
 
 ## 3. 阶段 0–6 验收矩阵
 
