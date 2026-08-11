@@ -13,7 +13,7 @@
 | --- | --- | --- |
 | 阶段 0–6 后端/数据/安全能力 | `ENGINEERING COMPLETE` | 控制面、数据合同、安全边界和既有后端证据仍有效；发生相关源码变化后必须重跑 |
 | 9 图 UI 高保真落实与前端全量验收 | `COMPLETED` | 2026-08-09 用户反馈已关闭 Dashboard 三项具体差异；当前工程门、治理回归、独立 UI/安全增量、全量 Stage 6 候选链均通过，用户已确认“看现在ui差不多还可以” |
-| Route A RC 封版与公开发布 | `IN_PROGRESS` | Stage 0-5 已完成；Apache-2.0 公开候选树的全量工程门、双模式演示、clean clone、新终端、桌面/移动与异常态验收均 PASS；Stage 5.5 正在净化公开历史并完成 remote/tag/Release 绑定 |
+| Route A RC 封版与公开发布 | `COMPLETED` | Stage 0-5.5 已完成；Apache-2.0 公开候选树的全量工程门、双模式演示、clean clone、新终端、桌面/移动与异常态验收均 PASS；[GitHub public 仓库](https://github.com/muhanking111/ai-student-dormitory-management-system)、`main`、tag `rc-20260811.1` 和 Release 绑定同一最终提交 |
 | 生产外部依赖与生产演练 | `NOT RUN` | 缺少生产 KMS、外部向量/对象服务、外部审计锚、正式供应商条款及生产灾备等真实环境证据，不能视为通过 |
 | 阶段 7 预测模型与学生端 | `OUT OF SCOPE` | 本轮明确不实施，不是失败，也不是待补测项 |
 

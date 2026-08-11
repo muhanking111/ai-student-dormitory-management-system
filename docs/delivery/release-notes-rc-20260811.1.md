@@ -1,6 +1,13 @@
 # RC `rc-20260811.1` 发布说明
 
-> 状态：Route A 本地候选；项目许可证已确定为 `Apache-2.0`，GitHub tag 和 Release 在 Stage 5.5 公开门完成后绑定。本文不表示预发布或生产放行。
+> 状态：Route A 本地工程候选已公开发布；项目许可证为 `Apache-2.0`。本文不表示预发布或生产放行。
+
+## 发布身份
+
+- 公开仓库：[muhanking111/ai-student-dormitory-management-system](https://github.com/muhanking111/ai-student-dormitory-management-system)
+- 不可移动 tag：`rc-20260811.1`
+- 公开 Release：[RC rc-20260811.1](https://github.com/muhanking111/ai-student-dormitory-management-system/releases/tag/rc-20260811.1)
+- 默认分支、tag 与 Release target 必须解析到同一最终提交；Release 不上传本地 JAR、dist、日志、测试报告、截图或 `.planning/` 原始证据。
 
 ## 主要能力
 
