@@ -1,0 +1,48 @@
+spring:
+  datasource:
+    driver-class-name: org.h2.Driver
+    url: jdbc:h2:mem:dormitory;MODE=MySQL;DB_CLOSE_DELAY=-1
+    username: sa
+    password:
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      database: 15
+  sql:
+    init:
+      mode: always
+
+sa-token:
+  token-name: Authorization
+  is-log: false
+  timeout: 28800
+  active-timeout: 1800
+  is-share: false
+  cookie:
+    path: /
+    http-only: true
+    same-site: Lax
+    secure: false
+
+dormitory:
+  security:
+    require-login-origin: false
+  auth:
+    rate-limit:
+      enabled: false
+  cors:
+    allowed-origins: http://localhost:5173
+  ai:
+    rollout:
+      enabled: true
+      basis-points: 10000
+      policy-version: test-rollout-v1
+      hmac-key: test-rollout-hmac-key-with-at-least-32-bytes
+    # 通用 API 测试不共享 burst 计数；专用限流测试与 real-it 单独启用并验证。
+    rate-limit:
+      enabled: false
+  bootstrap-admin:
+    username: admin
+    password: test-password-123
+    display-name: 测试管理员

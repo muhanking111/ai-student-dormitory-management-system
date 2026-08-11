@@ -1,0 +1,43 @@
+spring:
+  ai:
+    model:
+      chat: openai
+      embedding: none
+      image: none
+      moderation: none
+      audio:
+        speech: none
+        transcription: none
+    openai:
+      api-key: stub-contract-key-not-a-secret
+      chat:
+        options:
+          model: stub-model
+          # 仅由 P0 Stub Spike 验证 Spring AI 的显式回调；生产配置固定关闭。
+          internal-tool-execution-enabled: true
+    retry:
+      max-attempts: 1
+
+dormitory:
+  security:
+    require-login-origin: false
+  auth:
+    rate-limit:
+      enabled: false
+  ai:
+    enabled: true
+    provider:
+      active: spring-ai
+      model-alias: stub-model
+    capabilities:
+      assistant: true
+    streaming:
+      enabled: true
+    budget:
+      reserved-cost: 1
+    audit:
+      hmac-key: stub-audit-hmac-key-with-at-least-32-bytes
+    tokenization:
+      hmac-key: stub-tokenization-hmac-key-at-least-32-bytes
+    step-up:
+      hmac-key: stub-step-up-hmac-key-with-at-least-32-bytes

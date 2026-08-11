@@ -1,0 +1,1320 @@
+openapi: 3.1.0
+info:
+  title: 学生宿舍 AI 控制面 API
+  version: 1.0.0
+  description: >-
+    首期阶段 0-6 的内部管理员 API。所有业务写均通过 proposal、人工审批、
+    step-up 和现有 Service；本文档不授权动态 SQL、任意工具或供应商直连。
+servers:
+  - url: /
+security:
+  - cookieAuth: []
+  - bearerAuth: []
+tags:
+  - name: Conversations
+  - name: Commands
+  - name: Runs
+  - name: Knowledge
+  - name: Risks
+  - name: Proposals
+  - name: Audit
+  - name: Governance
+  - name: Evaluation
+  - name: Operations
+  - name: Security
+paths:
+  /api/ai/conversations:
+    get:
+      tags: [Conversations]
+      operationId: listAiConversations
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+        '401': { $ref: '#/components/responses/Error' }
+    post:
+      tags: [Conversations]
+      operationId: createAiConversation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [surface]
+              properties:
+                surface: { type: string, enum: [GLOBAL, DASHBOARD, REPAIR, NOTICE, KNOWLEDGE, RISK, APPROVAL, AUDIT] }
+                contextType: { type: [string, 'null'] }
+                contextId: { type: [integer, 'null'], format: int64 }
+      responses:
+        '201': { $ref: '#/components/responses/Created' }
+        '422': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /api/ai/conversations/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Uuid'
+    get:
+      tags: [Conversations]
+      operationId: getAiConversation
+      description: >-
+        返回 owner 范围内的扁平会话详情。assistant 消息携带真实 runId/runState；引用摘要在每次读取时
+        重新校验当前 ACL、版本状态和来源 Kill Switch。历史会话引用摘要不得返回 quote 或 confidence，
+        没有独立持久化的数据时间时 asOf 必须为空，不能用消息或 run 完成时间代替。
+      responses:
+        '200': { $ref: '#/components/responses/ConversationDetailOk' }
+        '404': { $ref: '#/components/responses/Error' }
+    delete:
+      tags: [Conversations]
+      operationId: eraseAiConversation
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '202':
+          description: 已归档会话并创建可查询的清除任务
+          headers:
+            Location: { schema: { type: string } }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiEnvelope' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /api/ai/erasure-jobs/{id}:
+    parameters: [{ $ref: '#/components/parameters/Uuid' }]
+    get:
+      tags: [Conversations, Audit]
+      operationId: getAiErasureJob
+      description: owner 可查看自己的任务；具有 ai:audit:read 的治理人员可查看脱敏 target 状态。
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+  /api/ai/conversations/{id}/archive:
+    parameters:
+      - $ref: '#/components/parameters/Uuid'
+    post:
+      tags: [Conversations]
+      operationId: archiveAiConversation
+      responses:
+        '204': { description: 已归档 }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /api/ai/conversations/{id}/messages:
+    parameters:
+      - $ref: '#/components/parameters/Uuid'
+      - $ref: '#/components/parameters/IdempotencyKey'
+    post:
+      tags: [Conversations]
+      operationId: createAiMessageRun
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text, clientRequestId]
+              properties:
+                text: { type: string, minLength: 1, maxLength: 16384 }
+                clientRequestId: { type: string, minLength: 1, maxLength: 128 }
+      responses:
+        '202': { $ref: '#/components/responses/AcceptedRun' }
+        '409': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { $ref: '#/components/responses/Error' }
+  /api/ai/dashboard/queries:
+    post:
+      tags: [Commands]
+      operationId: queryAiDashboard
+      description: >-
+        仅接受自然语言问题和固定 DashboardQueryIntent.v1 协议版本。run.completed 的
+        payload.result 符合 DashboardQueryResponse；服务端只执行 MetricCatalog 固定 handler，
+        不接受 SQL、表/列名、Mapper、排序表达式或客户端提供的 handler。
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DashboardCommand' }
+      responses:
+        '202': { $ref: '#/components/responses/AcceptedRun' }
+        '409': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /api/ai/knowledge/queries:
+    post:
+      tags: [Commands]
+      operationId: queryAiKnowledge
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody: { $ref: '#/components/requestBodies/JsonCommand' }
+      responses:
+        '202': { $ref: '#/components/responses/AcceptedRun' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /api/ai/repairs/{repairOrderId}/triage:
+    parameters:
+      - name: repairOrderId
+        in: path
+        required: true
+        schema: { type: integer, format: int64, minimum: 1 }
+    post:
+      tags: [Commands]
+      operationId: triageRepair
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody: { $ref: '#/components/requestBodies/JsonCommand' }
+      responses:
+        '202': { $ref: '#/components/responses/AcceptedRun' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /api/ai/notices/drafts:
+    post:
+      tags: [Commands]
+      operationId: draftNotice
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody: { $ref: '#/components/requestBodies/JsonCommand' }
+      responses:
+        '202': { $ref: '#/components/responses/AcceptedRun' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /api/ai/runs/{id}:
+    parameters: [{ $ref: '#/components/parameters/Uuid' }]
+    get:
+      tags: [Runs]
+      operationId: getAiRun
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+  /api/ai/runs/{id}/events:
+    parameters:
+      - $ref: '#/components/parameters/Uuid'
+      - name: Last-Event-ID
+        in: header
+        required: false
+        schema: { type: string }
+    get:
+      tags: [Runs]
+      operationId: streamAiRunEvents
+      responses:
+        '200':
+          description: 可恢复 SSE；终态唯一，事件 sequence 单调递增
+          content:
+            text/event-stream:
+              schema: { type: string }
+  /api/ai/runs/{id}/cancel:
+    parameters: [{ $ref: '#/components/parameters/Uuid' }]
+    post:
+      tags: [Runs]
+      operationId: cancelAiRun
+      responses:
+        '204': { description: 取消已接受 }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /api/ai/runs/{id}/retry:
+    parameters:
+      - $ref: '#/components/parameters/Uuid'
+      - $ref: '#/components/parameters/IdempotencyKey'
+    post:
+      tags: [Runs]
+      operationId: retryAiRun
+      description: >
+        仅允许 owner 对终态 ASSISTANT run 发起显式重试；新 run 使用当前会话、权限、上下文和激活配置，
+        复用原脱敏输入及 request hash，并通过 parentRunId 保留 lineage。同一幂等键重放返回原子 run。
+      responses:
+        '202': { $ref: '#/components/responses/AcceptedRun' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /api/ai/messages/{id}/feedback:
+    parameters: [{ $ref: '#/components/parameters/Uuid' }]
+    post:
+      tags: [Runs]
+      operationId: submitAiFeedback
+      requestBody: { $ref: '#/components/requestBodies/JsonCommand' }
+      responses:
+        '204': { description: 反馈已保存 }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /api/ai/knowledge/sources:
+    get:
+      tags: [Knowledge]
+      operationId: listKnowledgeSources
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+    post:
+      tags: [Knowledge]
+      operationId: createKnowledgeSource
+      requestBody: { $ref: '#/components/requestBodies/JsonCommand' }
+      responses:
+        '201': { $ref: '#/components/responses/Created' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /api/ai/knowledge/sources/{id}:
+    parameters: [{ $ref: '#/components/parameters/Uuid' }]
+    get:
+      tags: [Knowledge]
+      operationId: getKnowledgeSource
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+        '503': { $ref: '#/components/responses/Error' }
+    patch:
+      tags: [Knowledge]
+      operationId: updateKnowledgeSource
+      description: >-
+        以 expectedAclVersion 做 CAS 更新名称、L0/L1/L2 分类、ANY/ALL 匹配、ACTIVE/PAUSED 状态和 ACL；
+        权限码必须已登记且操作者只能授予自身范围，分类或 ACL 变化会原子撤销旧 PUBLIC_APPROVED。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [expectedAclVersion]
+              additionalProperties: false
+              properties:
+                expectedAclVersion: { type: integer, format: int64, minimum: 1 }
+                name: { type: string, minLength: 1, maxLength: 200 }
+                classification: { type: string, enum: [L0, L1, L2] }
+                matchMode: { type: string, enum: [ANY, ALL] }
+                status: { type: string, enum: [ACTIVE, PAUSED] }
+                permissions:
+                  type: array
+                  maxItems: 50
+                  uniqueItems: true
+                  items: { type: string, minLength: 1, maxLength: 64 }
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+        '400': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '503': { $ref: '#/components/responses/Error' }
+  /api/ai/knowledge/sources/{id}/uploads:
+    parameters:
+      - $ref: '#/components/parameters/Uuid'
+      - $ref: '#/components/parameters/IdempotencyKey'
+    post:
+      tags: [Knowledge]
+      operationId: createKnowledgeUpload
+      requestBody: { $ref: '#/components/requestBodies/JsonCommand' }
+      responses:
+        '201': { $ref: '#/components/responses/Created' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /api/ai/knowledge/uploads/{id}/content:
+    parameters: [{ $ref: '#/components/parameters/Uuid' }]
+    put:
+      tags: [Knowledge]
+      operationId: putKnowledgeUploadContent
+      requestBody:
+        required: true
+        content:
+          text/plain:
+            schema:
+              type: string
+              format: binary
+              maxLength: 20971520
+      responses:
+        '204': { description: 服务端流式读取并按 session-random key 条件写入隔离区成功 }
+        '413': { $ref: '#/components/responses/Error' }
+        '415': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /api/ai/knowledge/uploads/{id}/finalize:
+    parameters:
+      - $ref: '#/components/parameters/Uuid'
+      - $ref: '#/components/parameters/IdempotencyKey'
+    post:
+      tags: [Knowledge]
+      operationId: finalizeKnowledgeUpload
+      responses:
+        '202': { description: 固定隔离对象版本已通过受控纯文本检查；响应明确扫描适配器能力 }
+        '422': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /api/ai/knowledge/sources/{id}/versions:
+    parameters:
+      - $ref: '#/components/parameters/Uuid'
+      - $ref: '#/components/parameters/IdempotencyKey'
+    post:
+      tags: [Knowledge]
+      operationId: createKnowledgeVersion
+      requestBody: { $ref: '#/components/requestBodies/JsonCommand' }
+      responses:
+        '202': { $ref: '#/components/responses/Ok' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /api/ai/knowledge/versions/{id}:
+    parameters: [{ $ref: '#/components/parameters/Uuid' }]
+    get:
+      tags: [Knowledge]
+      operationId: getKnowledgeVersion
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+  /api/ai/knowledge/jobs/{id}:
+    parameters: [{ $ref: '#/components/parameters/Uuid' }]
+    get:
+      tags: [Knowledge]
+      operationId: getKnowledgeJob
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+  /api/ai/knowledge/versions/{id}/approve-public:
+    parameters:
+      - $ref: '#/components/parameters/Uuid'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/StepUpProof'
+    post:
+      tags: [Knowledge]
+      operationId: approvePublicKnowledgeVersion
+      requestBody: { $ref: '#/components/requestBodies/JsonCommand' }
+      responses:
+        '204': { description: 公共发布审批已记录 }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /api/ai/knowledge/versions/{id}/activate:
+    parameters: [{ $ref: '#/components/parameters/Uuid' }]
+    post:
+      tags: [Knowledge]
+      operationId: activateKnowledgeVersion
+      responses:
+        '204': { description: 已原子激活 }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /api/ai/knowledge/versions/{id}/retire:
+    parameters: [{ $ref: '#/components/parameters/Uuid' }]
+    post:
+      tags: [Knowledge]
+      operationId: retireKnowledgeVersion
+      responses:
+        '204': { description: 已退休 }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /api/ai/knowledge/versions/{id}/rollback:
+    parameters: [{ $ref: '#/components/parameters/Uuid' }]
+    post:
+      tags: [Knowledge]
+      operationId: rollbackKnowledgeVersion
+      responses:
+        '204': { description: 已回滚到该 READY 版本 }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /api/ai/citations/{id}:
+    parameters: [{ $ref: '#/components/parameters/Uuid' }]
+    get:
+      tags: [Knowledge]
+      operationId: getAiCitation
+      description: >-
+        仅返回已有 citation；每次读取重新校验当前 source ACL、version/chunk 状态和底层指标权限，
+        撤权、hash 不一致或不可见统一返回 404。
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+        '404': { $ref: '#/components/responses/Error' }
+  /api/ai/risk-cases:
+    get:
+      tags: [Risks]
+      operationId: listRiskCases
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - { name: type, in: query, schema: { type: string, enum: [维修风险, 入住风险, 卫生风险, 欠费风险] } }
+        - { name: state, in: query, schema: { type: string, enum: [open, acknowledged, resolved, dismissed] } }
+        - { name: keyword, in: query, schema: { type: string, maxLength: 100 }, description: 仅匹配脱敏 subject token、中文风险类型与确定性证据摘要 }
+      responses:
+        '200':
+          description: 经底层资源 scope 过滤的风险案例页
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RiskCasePageEnvelope' }
+  /api/ai/risk-scans:
+    post:
+      tags: [Risks]
+      operationId: createRiskScan
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      responses:
+        '202':
+          description: 风险规则扫描已接受；Location 指向 actor-scoped 状态资源
+          headers:
+            Location: { schema: { type: string } }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiEnvelope' }
+        '403': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /api/ai/risk-scans/{id}:
+    parameters: [{ $ref: '#/components/parameters/Uuid' }]
+    get:
+      tags: [Risks]
+      operationId: getRiskScan
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+        '404': { $ref: '#/components/responses/Error' }
+  /api/ai/risk-cases/{id}:
+    parameters: [{ $ref: '#/components/parameters/Uuid' }]
+    get:
+      tags: [Risks]
+      operationId: getRiskCase
+      responses:
+        '200':
+          description: 风险案例四层证据详情
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RiskCaseEnvelope' }
+        '404': { $ref: '#/components/responses/Error' }
+  /api/ai/risk-cases/{id}/{action}:
+    parameters:
+      - $ref: '#/components/parameters/Uuid'
+      - name: action
+        in: path
+        required: true
+        schema: { type: string, enum: [acknowledge, resolve, dismiss] }
+      - $ref: '#/components/parameters/IdempotencyKey'
+    post:
+      tags: [Risks]
+      operationId: disposeRiskCase
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RiskDispositionRequest' }
+      responses:
+        '204': { description: 人工事件已记录 }
+        '409': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /api/ai/proposals:
+    get:
+      tags: [Proposals]
+      operationId: listActionProposals
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - name: state
+          in: query
+          schema:
+            type: string
+            enum: [DRAFT, PENDING_APPROVAL, APPROVED, EXECUTING, NEEDS_REVIEW, SUCCEEDED, REJECTED, EXPIRED, STALE, CANCELLED, FAILED]
+        - name: actionType
+          in: query
+          schema:
+            type: string
+            enum: [REPAIR_ASSIGN, NOTICE_CREATE_DRAFT]
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+        '400': { $ref: '#/components/responses/Error' }
+  /api/ai/proposals/{id}:
+    parameters: [{ $ref: '#/components/parameters/Uuid' }]
+    get:
+      tags: [Proposals]
+      operationId: getActionProposal
+      responses: { '200': { $ref: '#/components/responses/Ok' } }
+  /api/ai/proposals/{id}/approve:
+    parameters:
+      - $ref: '#/components/parameters/Uuid'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/StepUpProof'
+    post:
+      tags: [Proposals]
+      operationId: approveActionProposal
+      requestBody: { $ref: '#/components/requestBodies/JsonCommand' }
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+        '409': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /api/ai/proposals/{id}/reject:
+    parameters:
+      - $ref: '#/components/parameters/Uuid'
+      - $ref: '#/components/parameters/IdempotencyKey'
+    post:
+      tags: [Proposals]
+      operationId: rejectActionProposal
+      requestBody: { $ref: '#/components/requestBodies/JsonCommand' }
+      responses:
+        '204': { description: 已拒绝 }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /api/ai/executions/{id}/reconfirm:
+    parameters:
+      - $ref: '#/components/parameters/Uuid'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/StepUpProof'
+    post:
+      tags: [Proposals]
+      operationId: reconfirmAiExecution
+      description: 仅对 NEEDS_REVIEW 的唯一 execution row 进行人工对账，不创建第二个 attempt。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [version, payloadHash, businessSnapshotHash, resolution, comment]
+              properties:
+                version: { type: integer, minimum: 0 }
+                payloadHash: { type: string, pattern: '^[0-9a-f]{64}$' }
+                businessSnapshotHash: { type: string, pattern: '^[0-9a-f]{64}$' }
+                resolution:
+                  type: string
+                  enum: [RESULT_CONFIRMED, PROVEN_NOT_EXECUTED, CONFLICT, UNKNOWN]
+                comment: { type: string, minLength: 6, maxLength: 500 }
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+        '403': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /api/ai/audit/runs:
+    get:
+      tags: [Audit]
+      operationId: listAuditRuns
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - name: from
+          in: query
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          schema: { type: string, format: date-time }
+        - name: capability
+          in: query
+          schema: { type: string, enum: [ASSISTANT, KNOWLEDGE, DASHBOARD, REPAIR, NOTICE, RISK, EVALUATION] }
+        - name: state
+          in: query
+          schema:
+            type: string
+            enum: [ACCEPTED, QUEUED, RUNNING, STREAMING, SUCCEEDED, DEGRADED, FAILED, TIMED_OUT, CANCELLED, NEEDS_RECONCILIATION]
+        - name: provider
+          in: query
+          schema: { type: string, pattern: '^[a-z0-9][a-z0-9-]{1,31}$' }
+      responses: { '200': { $ref: '#/components/responses/Ok' } }
+  /api/ai/audit/runs/{id}:
+    parameters: [{ $ref: '#/components/parameters/Uuid' }]
+    get:
+      tags: [Audit]
+      operationId: getAuditRun
+      description: >-
+        返回脱敏 run/event/tool/retrieval/citation/proposal/approval/execution/usage/hash-chain 元数据；
+        retrievals 只含 query hash、策略/索引/Embedding 版本与计数/延迟，其他聚合只含状态、版本、actor、
+        公开 ID 和 hash，不返回 message、tool 参数/结果、citation quote、proposal preview/payload 或审批评论正文。
+      responses: { '200': { $ref: '#/components/responses/Ok' } }
+  /api/ai/audit/runs/{id}/content:
+    parameters:
+      - $ref: '#/components/parameters/Uuid'
+      - name: X-Audit-Reason
+        in: header
+        required: true
+        schema: { type: string, minLength: 10, maxLength: 500 }
+      - $ref: '#/components/parameters/StepUpProof'
+    get:
+      tags: [Audit]
+      operationId: readAuditContentBreakGlass
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+        '403': { $ref: '#/components/responses/Error' }
+  /api/ai/audit/costs:
+    get:
+      tags: [Audit]
+      operationId: aggregateAiCosts
+      description: 仅允许固定维度聚合，不接受 SQL、字段名、表达式或任意排序。
+      parameters:
+        - name: from
+          in: query
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          schema: { type: string, format: date-time }
+        - name: groupBy
+          in: query
+          schema:
+            type: string
+            enum: [CAPABILITY, PROVIDER, MODEL, SUBJECT_KIND, DAY]
+            default: CAPABILITY
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+        '400': { $ref: '#/components/responses/Error' }
+  /api/ai/prompts:
+    get:
+      tags: [Governance]
+      operationId: listAiPromptVersions
+      parameters:
+        - { name: promptKey, in: query, schema: { type: string } }
+        - { name: status, in: query, schema: { type: string, enum: [DRAFT, ACTIVE, INACTIVE, RETIRED] } }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+        '403': { $ref: '#/components/responses/Error' }
+    post:
+      tags: [Governance]
+      operationId: createAiPromptVersion
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreatePromptRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/Created' }
+        '409': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /api/ai/prompts/{id}:
+    parameters: [{ $ref: '#/components/parameters/Uuid' }]
+    get:
+      tags: [Governance]
+      operationId: getAiPromptVersion
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+        '404': { $ref: '#/components/responses/Error' }
+  /api/ai/prompts/{id}/activate:
+    parameters:
+      - $ref: '#/components/parameters/Uuid'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/StepUpProof'
+    post:
+      tags: [Governance]
+      operationId: activateAiPromptVersion
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ActivateSlotRequest' }
+      responses:
+        '204': { description: active slot 已通过行锁/CAS 原子切换 }
+        '409': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /api/ai/model-aliases/{alias}/activate:
+    parameters:
+      - name: alias
+        in: path
+        required: true
+        schema: { type: string, pattern: '^[a-z][a-z0-9._-]{1,63}$' }
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/StepUpProof'
+    post:
+      tags: [Governance]
+      operationId: activateAiModelAlias
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ActivateModelAliasRequest' }
+      responses:
+        '204': { description: alias 已按 numeric version CAS 切换 }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /api/ai/tool-catalogs:
+    get:
+      tags: [Governance]
+      operationId: listAiToolCatalogs
+      description: 仅返回服务端标准 ToolCatalog 的 7 个固定工具 ID 和 manifest hash。
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+  /api/ai/tool-catalogs/{id}/activate:
+    parameters:
+      - $ref: '#/components/parameters/Uuid'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/StepUpProof'
+    post:
+      tags: [Governance]
+      operationId: activateAiToolCatalog
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ActivateToolCatalogRequest' }
+      responses:
+        '204': { description: 标准 7 工具目录已原子激活 }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /api/ai/eval-runs:
+    post:
+      tags: [Evaluation]
+      operationId: createAiEvalRun
+      description: >-
+        创建时在同一事务预留独立 EVALUATION/offline 预算；后台固定 SERVICE actor 运行
+        确定性合同评测。该端点不声称真实供应商或语义质量通过。
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateEvalRunRequest' }
+      responses:
+        '202':
+          description: 评测已排队
+          headers:
+            Location: { schema: { type: string } }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiEnvelope' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { $ref: '#/components/responses/Error' }
+  /api/ai/eval-runs/{id}:
+    parameters: [{ $ref: '#/components/parameters/Uuid' }]
+    get:
+      tags: [Evaluation]
+      operationId: getAiEvalRun
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+        '404': { $ref: '#/components/responses/Error' }
+  /api/ai/operations/readiness:
+    get:
+      tags: [Operations]
+      operationId: getAiReadiness
+      responses: { '200': { $ref: '#/components/responses/Ok' } }
+  /api/ai/operations/kill-switches:
+    get:
+      tags: [Operations]
+      operationId: listAiKillSwitches
+      responses: { '200': { $ref: '#/components/responses/Ok' } }
+  /api/ai/operations/kill-switches/{scope}/{key}/disable:
+    parameters:
+      - $ref: '#/components/parameters/KillSwitchScope'
+      - $ref: '#/components/parameters/KillSwitchKey'
+    post:
+      tags: [Operations]
+      operationId: disableAiScope
+      requestBody: { $ref: '#/components/requestBodies/KillSwitch' }
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /api/ai/operations/kill-switches/{scope}/{key}/clear:
+    parameters:
+      - $ref: '#/components/parameters/KillSwitchScope'
+      - $ref: '#/components/parameters/KillSwitchKey'
+      - $ref: '#/components/parameters/StepUpProof'
+    post:
+      tags: [Operations]
+      operationId: clearAiScope
+      requestBody: { $ref: '#/components/requestBodies/KillSwitchClear' }
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+        '409': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /api/security/csrf:
+    get:
+      tags: [Security]
+      operationId: issueSessionBoundCsrfToken
+      description: >-
+        为当前已认证会话签发 CSRF token；响应为 private/no-store，浏览器 Cookie 写请求还必须通过 Origin 校验。
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+        '401': { $ref: '#/components/responses/Error' }
+  /api/security/step-up:
+    post:
+      tags: [Security]
+      operationId: issueSingleUseStepUpProof
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password, actionCode, requestHash]
+              properties:
+                password: { type: string, writeOnly: true, maxLength: 200 }
+                actionCode: { type: string, pattern: '^[A-Z][A-Z0-9_]{2,63}$' }
+                resourcePublicId: { type: [string, 'null'], format: uuid }
+                requestHash: { type: string, pattern: '^[0-9a-fA-F]{64}$' }
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+        '401': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: Authorization
+    bearerAuth:
+      type: http
+      scheme: bearer
+  parameters:
+    Uuid:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    Page:
+      name: page
+      in: query
+      schema: { type: integer, minimum: 1, default: 1 }
+    PageSize:
+      name: pageSize
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema: { type: string, minLength: 1, maxLength: 128 }
+    StepUpProof:
+      name: X-Step-Up-Proof
+      in: header
+      required: true
+      schema: { type: string, minLength: 1 }
+    KillSwitchScope:
+      name: scope
+      in: path
+      required: true
+      schema: { type: string, enum: [MASTER, CAPABILITY, PROVIDER, SOURCE, WRITE] }
+    KillSwitchKey:
+      name: key
+      in: path
+      required: true
+      schema: { type: string }
+  requestBodies:
+    JsonCommand:
+      required: true
+      content:
+        application/json:
+          schema: { type: object, additionalProperties: true }
+    KillSwitch:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [reason]
+            properties:
+              reason: { type: string, minLength: 6, maxLength: 500 }
+    KillSwitchClear:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [reason, expectedVersion]
+            properties:
+              reason: { type: string, minLength: 6, maxLength: 500 }
+              expectedVersion: { type: integer, format: int64, minimum: 1 }
+  responses:
+    ConversationDetailOk:
+      description: owner 范围内的会话、消息、运行状态与当前可见引用摘要
+      headers:
+        Cache-Control: { schema: { type: string } }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ConversationDetailEnvelope' }
+    Ok:
+      description: 成功；响应为 private/no-store
+      headers:
+        Cache-Control: { schema: { type: string } }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiEnvelope' }
+    Created:
+      description: 已创建
+      headers:
+        Location: { schema: { type: string } }
+        Cache-Control: { schema: { type: string } }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiEnvelope' }
+    AcceptedRun:
+      description: 已接受异步运行
+      headers:
+        Location: { schema: { type: string } }
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/ApiEnvelope'
+              - type: object
+                properties:
+                  data:
+                    type: object
+                    required: [runId, eventsUrl]
+                    properties:
+                      runId: { type: string, format: uuid }
+                      eventsUrl: { type: string }
+    Error:
+      description: 安全错误合同；不返回堆栈、SQL 或敏感正文
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    RateLimited:
+      description: 请求超过 actor/route 策略；errorCode 固定为 AI_RATE_LIMIT_EXCEEDED。
+      headers:
+        Retry-After:
+          required: true
+          schema: { type: integer, minimum: 1 }
+        X-RateLimit-Limit:
+          required: true
+          schema: { type: integer, minimum: 1 }
+        X-RateLimit-Remaining:
+          required: true
+          schema: { type: integer, minimum: 0 }
+        X-RateLimit-Reset:
+          required: true
+          schema: { type: integer, format: int64, minimum: 0 }
+        X-RateLimit-Policy:
+          required: true
+          schema: { type: string }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/RateLimitErrorEnvelope' }
+  schemas:
+    ConversationCitationSummary:
+      type: object
+      additionalProperties: false
+      description: 当前可见的引用元数据或不泄露原始元数据的 denied 占位；不包含 quote。
+      required: [id, label, locator, version, access]
+      properties:
+        id: { type: string, format: uuid }
+        label: { type: string }
+        locator: { type: string }
+        version: { type: string }
+        access: { type: string, enum: [available, denied] }
+    ConversationMessage:
+      type: object
+      additionalProperties: false
+      description: 历史会话引用摘要不得返回 quote 或 confidence。
+      required: [id, role, text, classification, createdAt, citations]
+      properties:
+        id: { type: string, format: uuid }
+        role: { type: string, enum: [USER, ASSISTANT] }
+        text: { type: string }
+        classification: { type: string, enum: [L0, L1, L2, L3] }
+        createdAt: { type: string, format: date-time }
+        runId: { type: [string, 'null'], format: uuid }
+        runState:
+          type: [string, 'null']
+          enum: [ACCEPTED, QUEUED, RUNNING, STREAMING, SUCCEEDED, DEGRADED, FAILED, TIMED_OUT, CANCELLED, NEEDS_RECONCILIATION, null]
+        grounded:
+          type: [boolean, 'null']
+          description: assistant 消息按当前仍可访问的引用重算；USER 消息为空。
+        asOf:
+          type: [string, 'null']
+          format: date-time
+          description: 仅允许真实持久化的数据截至时间；当前无该事实时为空。
+        citations:
+          type: array
+          maxItems: 20
+          items: { $ref: '#/components/schemas/ConversationCitationSummary' }
+    ConversationDetail:
+      type: object
+      additionalProperties: false
+      required: [id, surface, contextType, status, createdAt, messages]
+      properties:
+        id: { type: string, format: uuid }
+        surface: { type: string, enum: [GLOBAL, DASHBOARD, REPAIR, NOTICE, KNOWLEDGE, RISK, APPROVAL, AUDIT] }
+        contextType: { type: string }
+        contextId: { type: [integer, 'null'], format: int64, minimum: 1 }
+        status: { type: string, enum: [ACTIVE, ARCHIVED] }
+        title: { type: [string, 'null'] }
+        lastMessageAt: { type: [string, 'null'], format: date-time }
+        createdAt: { type: string, format: date-time }
+        messages:
+          type: array
+          items: { $ref: '#/components/schemas/ConversationMessage' }
+    ConversationDetailEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/ApiEnvelope'
+        - type: object
+          properties:
+            data: { $ref: '#/components/schemas/ConversationDetail' }
+    RiskDispositionRequest:
+      type: object
+      additionalProperties: false
+      required: [caseVersion, detail]
+      properties:
+        caseVersion: { type: integer, minimum: 1 }
+        detail: { type: string, minLength: 1, maxLength: 1000 }
+        dueAt:
+          type: [string, 'null']
+          format: date-time
+          description: 可选人工处置截止时间；必须在信号时间之后且不超过一年。
+    RiskEvent:
+      type: object
+      additionalProperties: false
+      required: [id, type, actor, detail, occurredAt]
+      properties:
+        id: { type: string }
+        type: { type: string }
+        actor: { type: string }
+        detail: { type: string }
+        occurredAt: { type: string, format: date-time }
+    RiskSignalEvidence:
+      type: object
+      additionalProperties: false
+      required: [riskType, policyVersion, severity, observedAt, facts]
+      properties:
+        riskType: { type: string }
+        policyVersion: { type: string }
+        severity: { type: string, enum: [LOW, MEDIUM, HIGH, CRITICAL] }
+        observedAt: { type: string, format: date-time }
+        facts: { type: object, additionalProperties: true }
+    RiskBusinessSnapshot:
+      type: object
+      additionalProperties: false
+      required: [subjectType, subjectToken, capturedAt, facts]
+      properties:
+        subjectType: { type: string, enum: [REPAIR_ORDER, DORMITORY, CHECK_IN_APPLICATION, PAYMENT, OPERATION_TASK] }
+        subjectToken: { type: string }
+        capturedAt: { type: string, format: date-time }
+        facts: { type: object, additionalProperties: true }
+    RiskExplanationEvidence:
+      type: object
+      additionalProperties: false
+      required: [text, basis, policyVersion, degraded]
+      properties:
+        text: { type: string, maxLength: 4000 }
+        basis: { type: string, enum: [model, deterministic_degraded] }
+        policyVersion: { type: string }
+        runId: { type: [string, 'null'], format: uuid }
+        confidence:
+          type: [number, 'null']
+          minimum: 0
+          maximum: 1
+          description: 首期无经校准置信度时必须为空或省略，不得填规则分数。
+        degraded: { type: boolean }
+    RiskHumanEvidence:
+      type: object
+      additionalProperties: false
+      required: [events]
+      properties:
+        assigneeUserId: { type: [integer, 'null'], format: int64, minimum: 1 }
+        dueAt: { type: [string, 'null'], format: date-time }
+        events: { type: array, items: { $ref: '#/components/schemas/RiskEvent' } }
+    RiskEvidenceLayers:
+      type: object
+      additionalProperties: false
+      required: [signal, businessSnapshot, explanation, human]
+      properties:
+        signal: { $ref: '#/components/schemas/RiskSignalEvidence' }
+        businessSnapshot: { $ref: '#/components/schemas/RiskBusinessSnapshot' }
+        explanation: { $ref: '#/components/schemas/RiskExplanationEvidence' }
+        human: { $ref: '#/components/schemas/RiskHumanEvidence' }
+    RiskCase:
+      type: object
+      additionalProperties: false
+      required: [id, caseVersion, subjectToken, type, severity, ruleVersion, evidenceSummary,
+        explanation, assignee, sla, state, asOf, events, degraded, evidenceLayers]
+      properties:
+        id: { type: string, format: uuid }
+        caseVersion: { type: integer, minimum: 1 }
+        subjectToken: { type: string }
+        type: { type: string, enum: [维修风险, 入住风险, 运营风险] }
+        severity: { type: string, enum: [low, medium, high] }
+        ruleVersion: { type: string }
+        evidenceSummary: { type: string }
+        explanation: { type: string }
+        confidence: { type: [number, 'null'], minimum: 0, maximum: 1 }
+        assignee: { type: string }
+        sla: { type: string }
+        state: { type: string, enum: [open, acknowledged, resolved, dismissed] }
+        asOf: { type: string, format: date-time }
+        events: { type: array, items: { $ref: '#/components/schemas/RiskEvent' } }
+        degraded: { type: boolean }
+        explanationRunId: { type: [string, 'null'], format: uuid }
+        assigneeUserId: { type: [integer, 'null'], format: int64, minimum: 1 }
+        dueAt: { type: [string, 'null'], format: date-time }
+        evidenceLayers: { $ref: '#/components/schemas/RiskEvidenceLayers' }
+    RiskCaseEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/ApiEnvelope'
+        - type: object
+          properties:
+            data: { $ref: '#/components/schemas/RiskCase' }
+    RiskCasePageEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/ApiEnvelope'
+        - type: object
+          properties:
+            data:
+              type: object
+              required: [records, total, page, pageSize]
+              properties:
+                records: { type: array, items: { $ref: '#/components/schemas/RiskCase' } }
+                total: { type: integer, format: int64, minimum: 0 }
+                page: { type: integer, minimum: 1 }
+                pageSize: { type: integer, minimum: 1, maximum: 100 }
+    DashboardCommand:
+      type: object
+      additionalProperties: false
+      required: [question]
+      properties:
+        question: { type: string, minLength: 1, maxLength: 500 }
+        intentSchemaVersion: { type: string, const: DashboardQueryIntent.v1, default: DashboardQueryIntent.v1 }
+    DashboardQueryIntent:
+      type: object
+      additionalProperties: false
+      required: [metricIds, dateRange, dimensions, filters, presentationHint]
+      properties:
+        metricIds:
+          type: array
+          minItems: 1
+          maxItems: 6
+          uniqueItems: true
+          items:
+            type: string
+            enum: [dormitory.total, student.checked-in.count, bed.available.count, repair.pending.count, hygiene.failed.count, payment.unpaid.count]
+        dateRange: { $ref: '#/components/schemas/DashboardDateRange' }
+        dimensions:
+          type: array
+          maxItems: 2
+          uniqueItems: true
+          items: { type: string, enum: [buildingId, repairType] }
+        filters: { $ref: '#/components/schemas/DashboardFilters' }
+        presentationHint: { type: string, enum: [CARD, TABLE, LINE, BAR] }
+    DashboardDateRange:
+      type: object
+      additionalProperties: false
+      required: [preset]
+      properties:
+        preset: { type: string, enum: [TODAY, LAST_7_DAYS, LAST_30_DAYS] }
+    DashboardFilters:
+      type: object
+      additionalProperties: false
+      properties:
+        buildingIds:
+          type: array
+          maxItems: 20
+          uniqueItems: true
+          items: { type: string, pattern: '^[1-9][0-9]{0,17}$' }
+        repairTypes:
+          type: array
+          maxItems: 3
+          uniqueItems: true
+          items: { type: string, enum: [水电维修, 家具维修, 门窗维修] }
+    DashboardResolvedDateRange:
+      allOf:
+        - $ref: '#/components/schemas/DashboardDateRange'
+        - type: object
+          required: [from, to]
+          properties:
+            from: { type: string, format: date }
+            to: { type: string, format: date }
+    DashboardMetricRow:
+      type: object
+      additionalProperties: false
+      required: [dimensions, value]
+      properties:
+        dimensions:
+          type: object
+          additionalProperties: { type: string }
+        value: { type: number }
+    DashboardMetricValue:
+      type: object
+      additionalProperties: false
+      required: [value, unit, metricVersion, definition, rows]
+      properties:
+        value: { type: number }
+        unit: { type: string }
+        metricVersion: { type: string, pattern: '^v[1-9][0-9]*$' }
+        definition: { type: string }
+        rows: { type: array, maxItems: 100, items: { $ref: '#/components/schemas/DashboardMetricRow' } }
+    DashboardDataCitation:
+      type: object
+      additionalProperties: false
+      required: [id, label, locator, version, access, metricId, asOf]
+      properties:
+        id: { type: string }
+        label: { type: string }
+        locator: { type: string }
+        version: { type: string }
+        access: { type: string, const: available }
+        metricId: { type: string }
+        asOf: { type: string, format: date-time }
+    DashboardMetricResult:
+      type: object
+      additionalProperties: false
+      required: [metrics, asOf, catalogVersion, queryParameters, dataCitations]
+      properties:
+        metrics:
+          type: object
+          minProperties: 1
+          maxProperties: 6
+          additionalProperties: { $ref: '#/components/schemas/DashboardMetricValue' }
+        asOf: { type: string, format: date-time }
+        catalogVersion: { type: string, const: dashboard-metrics.v1 }
+        queryParameters:
+          type: object
+          additionalProperties: false
+          required: [dateRange, dimensions, filters]
+          properties:
+            dateRange: { $ref: '#/components/schemas/DashboardResolvedDateRange' }
+            dimensions:
+              type: array
+              items: { type: string, enum: [buildingId, repairType] }
+            filters: { $ref: '#/components/schemas/DashboardFilters' }
+        dataCitations:
+          type: array
+          minItems: 1
+          maxItems: 6
+          items: { $ref: '#/components/schemas/DashboardDataCitation' }
+    DashboardQueryResponse:
+      type: object
+      additionalProperties: false
+      required: [intent, result, explanation, modelUsed, degraded, intentSource, intentSchemaVersion]
+      properties:
+        intent: { $ref: '#/components/schemas/DashboardQueryIntent' }
+        result: { $ref: '#/components/schemas/DashboardMetricResult' }
+        explanation: { type: string }
+        modelUsed: { type: boolean }
+        degraded: { type: boolean }
+        intentSource: { type: string }
+        intentSchemaVersion: { type: string, const: DashboardQueryIntent.v1 }
+    CreatePromptRequest:
+      type: object
+      additionalProperties: false
+      required: [promptKey, version, content, responseSchemaVersion]
+      properties:
+        promptKey: { type: string, maxLength: 128 }
+        version: { type: string, pattern: '^v[1-9][0-9]{0,8}$' }
+        content: { type: string, minLength: 1, maxLength: 100000 }
+        responseSchemaVersion: { type: string, maxLength: 64 }
+    ActivateSlotRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        expectedActiveId: { type: [string, 'null'], format: uuid }
+    ActivateModelAliasRequest:
+      type: object
+      additionalProperties: false
+      required: [deploymentId, version]
+      properties:
+        deploymentId: { type: string, format: uuid }
+        version: { type: integer, format: int64, minimum: 0 }
+    ActivateToolCatalogRequest:
+      type: object
+      additionalProperties: false
+      required: [version, manifestHash]
+      properties:
+        version: { type: string, maxLength: 32 }
+        manifestHash: { type: string, pattern: '^[0-9a-fA-F]{64}$' }
+        expectedActiveId: { type: [string, 'null'], format: uuid }
+    CreateEvalRunRequest:
+      type: object
+      additionalProperties: false
+      required: [suiteName, datasetVersion, promptId, modelDeploymentId, codeRevision]
+      properties:
+        suiteName:
+          type: string
+          minLength: 3
+          maxLength: 128
+          description: 服务端只接受已登记的六个离线套件及其精确 datasetVersion 组合。
+        datasetVersion: { type: string, maxLength: 64 }
+        promptId: { type: string, format: uuid }
+        modelDeploymentId: { type: string, format: uuid }
+        codeRevision: { type: string, minLength: 3, maxLength: 128 }
+    ApiEnvelope:
+      type: object
+      required: [code, message, data]
+      properties:
+        code: { type: integer, const: 0 }
+        message: { type: string }
+        data: {}
+    ErrorEnvelope:
+      type: object
+      required: [code, message, data]
+      properties:
+        code: { type: integer }
+        message: { type: string }
+        data:
+          type: object
+          required: [errorCode, retryable]
+          properties:
+            errorCode: { type: string }
+            retryable: { type: boolean }
+            runId: { type: [string, 'null'], format: uuid }
+            fieldErrors: { type: array, items: { type: object } }
+    RateLimitErrorEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/ErrorEnvelope'
+        - type: object
+          properties:
+            data:
+              type: object
+              required: [errorCode, retryable]
+              properties:
+                errorCode: { type: string, const: AI_RATE_LIMIT_EXCEEDED }
+                retryable: { type: boolean, const: true }

@@ -1,0 +1,12 @@
+spring:
+  sql:
+    init:
+      mode: always
+
+dormitory:
+  demo-data-enabled: false
+  security:
+    require-login-origin: false
+  auth:
+    rate-limit:
+      enabled: false

@@ -1,0 +1,40 @@
+# Local credentials and machine-specific configuration
+.env
+.env.*
+!.env.example
+*.local
+
+# IDE, agent and local indexing state
+.idea/
+.vscode/
+.agents/
+.codex/
+.codegraph/
+.planning/
+.demo/
+.pytest_cache/
+
+# Dependencies and generated artifacts
+node_modules/
+backend/target/
+frontend/node_modules/
+frontend/coverage/
+frontend/dist*/
+frontend/playwright-report/
+frontend/test-results/
+test-results/
+
+# Local logs, traces, databases and process state
+*.log
+*.log.*
+*.trace
+*.pid
+*.db
+*.db-shm
+*.db-wal
+*.dump
+*.bak
+*.class
+
+# Superseded visual candidates are local decision evidence only
+design/ai-prototypes/candidates/

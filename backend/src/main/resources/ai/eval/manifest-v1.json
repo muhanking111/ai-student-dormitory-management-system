@@ -1,0 +1,81 @@
+{
+  "schemaVersion": "eval-dataset-manifest.v1",
+  "createdBy": "ai-phase-0-6-implementation",
+  "reviewStatus": "PENDING_INDEPENDENT_SECURITY_REVIEW",
+  "reviewedBy": "UNASSIGNED",
+  "reviewedAt": null,
+  "datasets": [
+    {
+      "datasetVersion": "dashboard-intent-v1",
+      "fileName": "dashboard-intent-v1.jsonl",
+      "sha256": "d811b813874d08daa0044df170fa2b92de131b6cb5bc1eaa7a9431169c6567f0",
+      "caseCount": 3,
+      "createdBy": "ai-phase-0-6-implementation",
+      "reviewedBy": "UNASSIGNED",
+      "source": "synthetic-cases-derived-from-plan-contracts",
+      "license": "Apache-2.0",
+      "classification": "SYNTHETIC_NON_PII",
+      "changeSummary": "建立指标路由、SQL 拒绝和固定引用合同基线"
+    },
+    {
+      "datasetVersion": "knowledge-grounding-v1",
+      "fileName": "knowledge-grounding-v1.jsonl",
+      "sha256": "b454039ecdd46b3af61ff934ad644e8ec7b10304af0bf1ae2588afabaad86b77",
+      "caseCount": 3,
+      "createdBy": "ai-phase-0-6-implementation",
+      "reviewedBy": "UNASSIGNED",
+      "source": "synthetic-cases-derived-from-plan-contracts",
+      "license": "Apache-2.0",
+      "classification": "SYNTHETIC_NON_PII",
+      "changeSummary": "建立有来源回答、ACL 拒绝和无来源拒答基线"
+    },
+    {
+      "datasetVersion": "notice-draft-v1",
+      "fileName": "notice-draft-v1.jsonl",
+      "sha256": "c65e7ac4a838c856f901367ede29b301a75fbfb8bccdadeec91bd6fa5fa4fbba",
+      "caseCount": 3,
+      "createdBy": "ai-phase-0-6-implementation",
+      "reviewedBy": "UNASSIGNED",
+      "source": "synthetic-cases-derived-from-plan-contracts",
+      "license": "Apache-2.0",
+      "classification": "SYNTHETIC_NON_PII",
+      "changeSummary": "建立纯文本草稿、XSS 与提示注入拒绝基线"
+    },
+    {
+      "datasetVersion": "repair-triage-v1",
+      "fileName": "repair-triage-v1.jsonl",
+      "sha256": "8e7f175dd7234c6cb091fa9eea61988857ccd5ba13b045cd0255d9ffdffd34d2",
+      "caseCount": 3,
+      "createdBy": "ai-phase-0-6-implementation",
+      "reviewedBy": "UNASSIGNED",
+      "source": "synthetic-cases-derived-from-plan-contracts",
+      "license": "Apache-2.0",
+      "classification": "SYNTHETIC_NON_PII",
+      "changeSummary": "建立维修分类、紧急度与注入降级基线"
+    },
+    {
+      "datasetVersion": "risk-explanation-v1",
+      "fileName": "risk-explanation-v1.jsonl",
+      "sha256": "af626c508b5ea0e88fae358f86d3774f0cf0d53cdba291c272021fdf318c9a37",
+      "caseCount": 2,
+      "createdBy": "ai-phase-0-6-implementation",
+      "reviewedBy": "UNASSIGNED",
+      "source": "synthetic-cases-derived-from-plan-contracts",
+      "license": "Apache-2.0",
+      "classification": "SYNTHETIC_NON_PII",
+      "changeSummary": "建立确定性规则证据与人工确认解释基线"
+    },
+    {
+      "datasetVersion": "security-redteam-v1",
+      "fileName": "security-redteam-v1.jsonl",
+      "sha256": "cae9bdd0a2881257c0679d551a58036f636976916061f68a507b6ae801530366",
+      "caseCount": 7,
+      "createdBy": "ai-phase-0-6-implementation",
+      "reviewedBy": "UNASSIGNED",
+      "source": "synthetic-cases-derived-from-plan-contracts",
+      "license": "Apache-2.0",
+      "classification": "SYNTHETIC_NON_PII",
+      "changeSummary": "建立提示注入、SSRF、SQL、Unicode 与编码命令红队基线"
+    }
+  ]
+}

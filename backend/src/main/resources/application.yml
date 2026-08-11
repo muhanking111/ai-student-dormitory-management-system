@@ -1,0 +1,189 @@
+server:
+  port: 8080
+
+spring:
+  mvc:
+    # TRACE 必须进入 MVC interceptor 链，不能由 Servlet 容器直接回显请求。
+    dispatch-trace-request: true
+  ai:
+    model:
+      chat: ${SPRING_AI_CHAT_MODEL:none}
+      embedding: none
+      image: none
+      moderation: none
+      audio:
+        speech: none
+        transcription: none
+    openai:
+      base-url: ${AI_MODEL_BASE_URL:${DEEPSEEK_BASE_URL:${SPRING_AI_OPENAI_BASE_URL:https://api.openai.com}}}
+      api-key: ${AI_MODEL_API_KEY:${DEEPSEEK_API_KEY:${SPRING_AI_OPENAI_API_KEY:}}}
+      chat:
+        options:
+          model: ${AI_MODEL_NAME:${DEEPSEEK_CHAT_MODEL:${SPRING_AI_OPENAI_CHAT_MODEL:deepseek-v4-flash}}}
+          internal-tool-execution-enabled: false
+    retry:
+      max-attempts: 1
+  application:
+    name: student-dormitory-management-system
+  jackson:
+    mapper:
+      accept-case-insensitive-properties: false
+  config:
+    import: optional:file:../.env[.properties]
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: ${DB_URL:jdbc:mysql://localhost:3306/student_dormitory?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true}
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:}
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      username: ${REDIS_USERNAME:}
+      password: ${REDIS_PASSWORD:}
+      database: ${REDIS_DATABASE:0}
+      ssl:
+        enabled: ${REDIS_SSL_ENABLED:false}
+  sql:
+    init:
+      mode: always
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    db-config:
+      id-type: auto
+
+sa-token:
+  token-name: Authorization
+  # 8 小时绝对有效期、30 分钟无操作失效；不共享登录 token，降低会话固定与长期滥用窗口。
+  timeout: 28800
+  active-timeout: 1800
+  is-concurrent: true
+  is-share: false
+  token-style: uuid
+  is-log: false
+  cookie:
+    path: /
+    http-only: true
+    same-site: Lax
+    secure: ${SESSION_COOKIE_SECURE:true}
+
+dormitory:
+  demo-data-enabled: ${DEMO_DATA_ENABLED:false}
+  dashboard:
+    cache-key: ${DASHBOARD_CACHE_KEY:dormitory:dashboard:statistics}
+  security:
+    require-login-origin: ${REQUIRE_LOGIN_ORIGIN:true}
+  auth:
+    rate-limit:
+      enabled: ${LOGIN_RATE_LIMIT_ENABLED:true}
+      key-prefix: '${LOGIN_RATE_LIMIT_KEY_PREFIX:dormitory:auth:login:v1}'
+      username-attempts: ${LOGIN_RATE_LIMIT_USERNAME_ATTEMPTS:8}
+      ip-attempts: ${LOGIN_RATE_LIMIT_IP_ATTEMPTS:40}
+      window: ${LOGIN_RATE_LIMIT_WINDOW:PT1M}
+  ai:
+    enabled: ${AI_ENABLED:false}
+    capabilities:
+      assistant: ${AI_CAPABILITY_ASSISTANT_ENABLED:false}
+      knowledge: ${AI_CAPABILITY_KNOWLEDGE_ENABLED:false}
+      dashboard: ${AI_CAPABILITY_DASHBOARD_ENABLED:false}
+      repair: ${AI_CAPABILITY_REPAIR_ENABLED:false}
+      notice: ${AI_CAPABILITY_NOTICE_ENABLED:false}
+      risk: ${AI_CAPABILITY_RISK_ENABLED:false}
+      evaluation: ${AI_CAPABILITY_EVALUATION_ENABLED:false}
+    provider:
+      active: ${AI_PROVIDER_ACTIVE:none}
+      model-alias: ${AI_PROVIDER_MODEL_ALIAS:${AI_MODEL_NAME:${DEEPSEEK_CHAT_MODEL:${SPRING_AI_OPENAI_CHAT_MODEL:deepseek-v4-flash}}}}
+    streaming:
+      enabled: ${AI_STREAMING_ENABLED:false}
+    write-execution:
+      enabled: ${AI_WRITE_EXECUTION_ENABLED:false}
+      lease-timeout: ${AI_EXECUTION_LEASE_TIMEOUT:PT5M}
+      recovery-interval: ${AI_EXECUTION_RECOVERY_INTERVAL:PT1M}
+    audit:
+      hmac-key: ${AI_AUDIT_HMAC_KEY:}
+      active-key-version: ${AI_AUDIT_HMAC_ACTIVE_VERSION:1}
+      previous-hmac-key: ${AI_AUDIT_PREVIOUS_HMAC_KEY:}
+      previous-key-version: ${AI_AUDIT_PREVIOUS_HMAC_VERSION:0}
+      anchor:
+        enabled: ${AI_AUDIT_ANCHOR_ENABLED:false}
+        sink: ${AI_AUDIT_ANCHOR_SINK:none}
+        endpoint: ${AI_AUDIT_ANCHOR_ENDPOINT:}
+        hmac-key: ${AI_AUDIT_ANCHOR_HMAC_KEY:}
+        timeout: ${AI_AUDIT_ANCHOR_TIMEOUT:PT5S}
+        cron: '${AI_AUDIT_ANCHOR_CRON:0 5 0 * * *}'
+        zone: ${AI_AUDIT_ANCHOR_ZONE:Asia/Shanghai}
+    tokenization:
+      hmac-key: ${AI_TOKENIZATION_HMAC_KEY:}
+      active-key-version: ${AI_TOKENIZATION_HMAC_ACTIVE_VERSION:1}
+    risk:
+      explanation:
+        enabled: ${AI_RISK_EXPLANATION_ENABLED:false}
+        adapter: ${AI_RISK_EXPLANATION_ADAPTER:none}
+      thresholds:
+        # PD-05 确认前的建议初始值；调整任一值会生成新的规则 policyVersion。
+        repair-backlog-hours: ${AI_RISK_REPAIR_BACKLOG_HOURS:72}
+        repeat-repair-count: ${AI_RISK_REPEAT_REPAIR_COUNT:3}
+        repeat-repair-window-days: ${AI_RISK_REPEAT_REPAIR_WINDOW_DAYS:30}
+        long-pending-hours: ${AI_RISK_LONG_PENDING_HOURS:48}
+    step-up:
+      hmac-key: ${AI_STEP_UP_HMAC_KEY:}
+      active-key-version: ${AI_STEP_UP_HMAC_ACTIVE_VERSION:1}
+      previous-hmac-key: ${AI_STEP_UP_PREVIOUS_HMAC_KEY:}
+      previous-key-version: ${AI_STEP_UP_PREVIOUS_HMAC_VERSION:0}
+      proof-ttl: ${AI_STEP_UP_PROOF_TTL:PT5M}
+      failure-window: ${AI_STEP_UP_FAILURE_WINDOW:PT15M}
+      max-failures: ${AI_STEP_UP_MAX_FAILURES:5}
+    budget:
+      reserved-tokens: ${AI_RUN_RESERVED_TOKENS:20000}
+      reserved-cost: ${AI_RUN_RESERVED_COST:0}
+      reservation-ttl: ${AI_BUDGET_RESERVATION_TTL:PT10M}
+    rollout:
+      enabled: ${AI_ROLLOUT_ENABLED:false}
+      basis-points: ${AI_ROLLOUT_BASIS_POINTS:0}
+      policy-version: ${AI_ROLLOUT_POLICY_VERSION:rollout-disabled-v1}
+      hmac-key: ${AI_ROLLOUT_HMAC_KEY:}
+      internal-user-ids: ${AI_ROLLOUT_INTERNAL_USER_IDS:}
+    outbox:
+      auto-process: ${AI_OUTBOX_AUTO_PROCESS:true}
+      initial-delay: ${AI_OUTBOX_INITIAL_DELAY:PT3S}
+      interval: ${AI_OUTBOX_INTERVAL:PT5S}
+      lease-timeout: ${AI_OUTBOX_LEASE_TIMEOUT:PT2M}
+      retry-base-delay: ${AI_OUTBOX_RETRY_BASE_DELAY:PT2S}
+      max-attempts: ${AI_OUTBOX_MAX_ATTEMPTS:5}
+    runtime:
+      executor-core-size: ${AI_EXECUTOR_CORE_SIZE:2}
+      executor-max-size: ${AI_EXECUTOR_MAX_SIZE:4}
+      executor-queue-capacity: ${AI_EXECUTOR_QUEUE_CAPACITY:256}
+      max-sse-connections-per-user: ${AI_MAX_SSE_CONNECTIONS_PER_USER:3}
+      heartbeat-interval: ${AI_SSE_HEARTBEAT_INTERVAL:PT15S}
+      emitter-timeout: ${AI_SSE_EMITTER_TIMEOUT:PT5M}
+      sse-key-prefix: '${AI_REDIS_KEY_PREFIX:dormitory:ai}:sse:v1'
+    rate-limit:
+      enabled: ${AI_RATE_LIMIT_ENABLED:true}
+      key-prefix: '${AI_REDIS_KEY_PREFIX:dormitory:ai}:rate-limit:v1'
+      # 安全计划建议初始值；上线后按真实流量校准，不可由请求动态覆盖。
+      runs-per-minute: ${AI_RUNS_PER_MINUTE:10}
+      uploads-per-hour: ${AI_UPLOADS_PER_HOUR:20}
+      ingestions-per-hour: ${AI_INGESTIONS_PER_HOUR:20}
+      risk-scans-per-minute: ${AI_RISK_SCANS_PER_MINUTE:5}
+      approvals-per-minute: ${AI_APPROVALS_PER_MINUTE:10}
+      approvals-per-proposal-per-minute: ${AI_APPROVALS_PER_PROPOSAL_PER_MINUTE:5}
+      writes-per-minute: ${AI_WRITES_PER_MINUTE:60}
+      ip-multiplier: ${AI_RATE_LIMIT_IP_MULTIPLIER:5}
+    production:
+      redis-key-prefix: ${AI_REDIS_KEY_PREFIX:}
+      secret-manager-provider: ${AI_SECRET_MANAGER_PROVIDER:}
+      kms-key-reference: ${AI_KMS_KEY_REFERENCE:}
+      redis-private-network-confirmed: ${AI_REDIS_PRIVATE_NETWORK_CONFIRMED:false}
+      backup-encryption-confirmed: ${AI_BACKUP_ENCRYPTION_CONFIRMED:false}
+      provider-endpoint-allowlist: ${AI_PROVIDER_ENDPOINT_ALLOWLIST:}
+      audit-anchor-endpoint-allowlist: ${AI_AUDIT_ANCHOR_ENDPOINT_ALLOWLIST:}
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
+  bootstrap-admin:
+    username: ${BOOTSTRAP_ADMIN_USERNAME:}
+    password: ${BOOTSTRAP_ADMIN_PASSWORD:}
+    display-name: ${BOOTSTRAP_ADMIN_DISPLAY_NAME:系统管理员}

@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="学生宿舍管理系统">
+  <rect width="64" height="64" rx="12" fill="#163B83"/>
+  <path d="M14 54V22L32 10l18 12v32H14Z" fill="#FFFFFF"/>
+  <path d="M22 26h7v7h-7zm13 0h7v7h-7zM22 38h7v7h-7zm13 0h7v7h-7z" fill="#2563EB"/>
+  <path d="M29 54V44h6v10" fill="#0F2F6F"/>
+</svg>
