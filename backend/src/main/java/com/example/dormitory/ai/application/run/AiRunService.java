@@ -169,6 +169,7 @@ public class AiRunService {
     public PageResponse<Conversation> listConversations(long page, long pageSize) {
         gate.requireCapability(AiCapability.ASSISTANT);
         validatePage(page, pageSize);
+        int requestedPageSize = Math.toIntExact(pageSize);
         AiActorContext actor = actorResolver.current("ai:assistant:use");
         long requestedOffset;
         try {
@@ -176,7 +177,7 @@ public class AiRunService {
         } catch (ArithmeticException overflow) {
             requestedOffset = Long.MAX_VALUE;
         }
-        List<Conversation> requestedRecords = new ArrayList<>((int) pageSize);
+        List<Conversation> requestedRecords = new ArrayList<>(requestedPageSize);
         long visibleTotal = 0;
         long scanned = 0;
         long expectedOwnerTotal = -1;
@@ -197,7 +198,7 @@ public class AiRunService {
             }
             for (Conversation conversation : batch.records()) {
                 if (!hasCurrentConversationAccess(actor, conversation)) continue;
-                if (visibleTotal >= requestedOffset && requestedRecords.size() < pageSize) {
+                if (visibleTotal >= requestedOffset && requestedRecords.size() < requestedPageSize) {
                     requestedRecords.add(conversation);
                 }
                 visibleTotal++;

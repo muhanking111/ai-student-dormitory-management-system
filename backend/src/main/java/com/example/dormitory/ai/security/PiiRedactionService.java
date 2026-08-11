@@ -31,7 +31,7 @@ public class PiiRedactionService {
                     + "authorization\\s*[:：]\\s*bearer\\s+\\S+|"
                     + "(?:password|passphrase|(?:access_)?token|api[_-]?secret|"
                     + "密码|口令|密钥|秘钥|访问令牌|身份令牌|令牌)"
-                    + "\\s*(?:[:=：]|(?:为|是)\\s+)\\s*[^\\s，。；;]{1,})");
+                    + "\\s*+(?:[:=：]\\s*+|(?:为|是)\\s++)[^\\s，。；;]++)");
     private static final Pattern HEALTH_RECORD = Pattern.compile(
             "(?iu)(?:健康(?:状况|信息|记录)|病史|既往史|疾病|诊断|用药(?:记录|情况)?|"
                     + "过敏史|残疾(?:情况|等级|证号)?|"
@@ -60,10 +60,11 @@ public class PiiRedactionService {
                     + "[^\\s，。；;]{1,64}");
     private static final Pattern FINANCIAL_SENSITIVE_DETAIL = Pattern.compile(
             "(?iu)(?:(?:银行卡(?:号)?|银行(?:账户|账号)|账户号|收款账号|支付账号|卡号)"
-                    + "\\s*(?:[:=：]|(?:为|是)\\s*)\\s*[0-9][0-9\\s-]{7,30}"
-                    + "|(?:cvv|cvc|安全码)\\s*(?:[:=：]|(?:为|是)\\s*)\\s*\\d{3,4}"
+                    + "\\s*+(?:[:=：]\\s*+|(?:为|是)\\s*+)[0-9][0-9\\s-]{7,30}+"
+                    + "|(?:cvv|cvc|安全码)\\s*+(?:[:=：]\\s*+|(?:为|是)\\s*+)\\d{3,4}+"
                     + "|(?:财务敏感明细|个人缴费明细|个人欠费明细|账户余额|银行卡余额|"
-                    + "补助金额|贷款金额)\\s*(?:[:=：]|(?:为|是)\\s*)\\s*[^。；;\\r\\n]{1,128})");
+                    + "补助金额|贷款金额)\\s*+(?:[:=：]\\s*+|(?:为|是)\\s*+)"
+                    + "[^。；;\\r\\n]{1,128}+)");
     private static final Pattern PERSONAL_DISCIPLINARY_STATEMENT = Pattern.compile(
             "(?iu)(?:当事人|姓名\\s*[:：]\\s*[\\p{IsHan}·]{2,8})"
                     + "[^。；;\\r\\n]{0,24}(?:受到|给予|被处以)\\s*"
@@ -80,11 +81,11 @@ public class PiiRedactionService {
                     + "(?:0[1-9]|[12]\\d|3[01])\\d{3}[0-9Xx](?!\\d)");
     private static final Pattern LABELED_PERSON_NAME = Pattern.compile(
             "(?iu)((?:学生|住户|联系人|申请人|报修人|发布人)?姓名|联系人|申请人|报修人|发布人)"
-                    + "(\\s*[:=：]\\s*)([\\p{IsHan}][\\p{IsHan}·]{1,7})");
+                    + "(\\s*+[:=：]\\s*+)([\\p{IsHan}][\\p{IsHan}·]{1,7})");
     private static final Pattern LABELED_STUDENT_NO = Pattern.compile(
-            "(?iu)(学号|student(?:[ _-]?no)?)(\\s*[:=：]?\\s*)([A-Za-z0-9-]{2,32})");
+            "(?iu)(学号|student(?:[ _-]?no)?)(\\s*+(?:[:=：]\\s*+)?)([A-Za-z0-9-]{2,32})");
     private static final Pattern LABELED_PHONE = Pattern.compile(
-            "(?iu)(联系电话|手机号|电话|phone)(\\s*[:=：]?\\s*)(\\+?[0-9][0-9 -]{5,31})");
+            "(?iu)(联系电话|手机号|电话|phone)(\\s*+(?:[:=：]\\s*+)?)(\\+?[0-9][0-9 -]{5,31})");
     private static final Pattern CONTEXTUAL_PERSON_NAME = Pattern.compile(
             "(?iu)(学生|住户|联系人|申请人|报修人)(\\s*)"
                     + "((?!(?:受到|给予|被处以|因|患有|确诊|感染|应该|应当|可以|必须|需要))"

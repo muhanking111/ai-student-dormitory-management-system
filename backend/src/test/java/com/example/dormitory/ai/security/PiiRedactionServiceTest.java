@@ -4,11 +4,13 @@ import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
 import java.text.Normalizer;
+import java.time.Duration;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTimeout;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PiiRedactionServiceTest {
@@ -71,6 +73,27 @@ class PiiRedactionServiceTest {
             assertThrows(SensitiveDataBlockedException.class,
                     () -> service.redact(text, "knowledge-ingestion"), text);
         }
+    }
+
+    @Test
+    void handlesAdversarialWhitespaceWithoutRegexBacktracking() {
+        String padding = " ".repeat(20_000);
+
+        assertTimeout(Duration.ofSeconds(2), () -> {
+            assertThrows(SensitiveDataBlockedException.class,
+                    () -> service.redact("密码:" + padding + "secret-value", "assistant"));
+            assertThrows(SensitiveDataBlockedException.class,
+                    () -> service.redact("卡号:" + padding + "6222020202020202020", "assistant"));
+            assertThrows(SensitiveDataBlockedException.class,
+                    () -> service.redact("cvv:" + padding + "123", "assistant"));
+
+            PiiRedactionService.RedactionResult student = service.redact(
+                    "学号" + padding + "IMPORT-001", "assistant");
+            PiiRedactionService.RedactionResult phone = service.redact(
+                    "电话" + padding + "13812345678", "assistant");
+            assertFalse(student.redactedText().contains("IMPORT-001"));
+            assertFalse(phone.redactedText().contains("13812345678"));
+        });
     }
 
     @Test

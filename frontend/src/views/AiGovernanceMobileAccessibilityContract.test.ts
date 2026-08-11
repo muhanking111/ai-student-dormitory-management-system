@@ -80,7 +80,7 @@ describe('Stage 5 治理与公告移动可访问性合同', () => {
     expect(auditViewSource).toMatch(/\.view-toggle button\s*\{[^}]*min-height:\s*(?:44px|var\(--touch-target\));/s)
     expect(auditViewSource).toMatch(/\.run-pagination button\s*\{[^}]*width:\s*(?:44px|var\(--touch-target\));[^}]*height:\s*(?:44px|var\(--touch-target\));/s)
 
-    expect(riskViewSource).toMatch(/\.risk-filters select,\s*\.risk-filters input(?:,\s*[^{}]+)*\s*\{[^}]*min-height:\s*(?:44px|var\(--touch-target\));/s)
+    expect(riskViewSource).toMatch(/\.risk-filters select,\s*\.risk-filters input,\s*\.risk-pagination select\s*\{[^}]*min-height:\s*(?:44px|var\(--touch-target\));/s)
     expect(riskViewSource).toMatch(/\.page-controls button\s*\{[^}]*min-width:\s*(?:44px|var\(--touch-target\));[^}]*height:\s*(?:44px|var\(--touch-target\));/s)
   })
 
