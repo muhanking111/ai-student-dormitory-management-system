@@ -1,8 +1,27 @@
 # 现代 AI 智能学生宿舍管理系统
 
+<p align="center">
+  <a href="https://github.com/muhanking111/ai-student-dormitory-management-system"><img alt="GitHub stars" src="https://img.shields.io/github/stars/muhanking111/ai-student-dormitory-management-system?style=for-the-badge&logo=github"></a>
+  <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-Apache%202.0-1f2937?style=for-the-badge"></a>
+  <a href="backend/pom.xml"><img alt="Spring Boot" src="https://img.shields.io/badge/Spring%20Boot-3.5-6db33f?style=for-the-badge&logo=springboot&logoColor=white"></a>
+  <a href="frontend/package.json"><img alt="Vue" src="https://img.shields.io/badge/Vue-3-42b883?style=for-the-badge&logo=vuedotjs&logoColor=white"></a>
+</p>
+
 面向高校宿舍管理员、后勤人员和学校管理人员的前后端分离管理系统。现行能力、架构、阶段状态与后续生产门统一见 [AI 总计划](./plan/ai-master-plan.md)；前端以 [9 张最终原型](./design/ai-prototypes/README.md) 为唯一视觉合同，后续编码任务使用 [现行开发提示词](./plan/development-prompts.md)。
 
 AI 首期阶段 0–6 已完成，当前为 `18 个原业务路由 + 4 个 AI 路由 = 22 个受保护路由`：提供带引用助手、固定指标驾驶舱、知识治理、维修分诊、公告草稿、风险中心、审批和运行审计。AI 与写执行默认关闭；业务写只允许“建议 → 变更预览 → 人工审批 → 现有 Service”，不允许模型生成 SQL、动态工具或绕过 Sa-Token/RBAC。精确验收和外部供应商 `NOT RUN` 边界见 [AI 验证与验收](./plan/ai-verification.md)。
+
+> **项目状态**：本仓库面向本地演示、工程审阅和毕业设计展示。Fake provider、隔离数据库和本地验收不代表真实供应商或生产环境已放行。
+
+## 目录
+
+- [技术栈](#技术栈)
+- [当前能力](#当前能力)
+- [五分钟本地演示](#五分钟本地演示)
+- [开发运行](#开发运行)
+- [验证命令](#验证命令)
+- [交付文档](#交付文档)
+- [安全边界](#安全边界)
 
 ## 技术栈
 
