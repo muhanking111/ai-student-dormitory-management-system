@@ -5,9 +5,11 @@ import com.example.dormitory.ai.domain.model.BusinessActorScope;
 import com.example.dormitory.ai.knowledge.KnowledgeAssistantService;
 import com.example.dormitory.ai.port.BusinessReadFacade;
 import com.example.dormitory.ai.port.AiToolCallAuditPort;
+import com.example.dormitory.ai.tool.FixedToolExecutor;
 import com.example.dormitory.ai.tool.ToolCatalog;
 import com.example.dormitory.ai.tool.ToolDeniedException;
 import com.example.dormitory.ai.tool.ToolDefinition;
+import com.example.dormitory.ai.tool.ToolExecutionException;
 import com.example.dormitory.common.BusinessException;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -37,6 +39,7 @@ public final class ContextResolverRegistry {
     private final ToolCatalog tools;
     private final ObjectMapper objectMapper;
     private final AiToolCallAuditPort toolCallAudits;
+    private final FixedToolExecutor toolExecutor;
 
     public ContextResolverRegistry(
             BusinessReadFacade businessReads,
@@ -49,6 +52,7 @@ public final class ContextResolverRegistry {
         this.tools = java.util.Objects.requireNonNull(tools);
         this.objectMapper = java.util.Objects.requireNonNull(objectMapper);
         this.toolCallAudits = java.util.Objects.requireNonNull(toolCallAudits);
+        this.toolExecutor = new FixedToolExecutor(tools, objectMapper);
     }
 
     public Resolution resolve(
@@ -120,6 +124,7 @@ public final class ContextResolverRegistry {
         String effectiveUserQuery = runId == null ? null : redactedUserQuery;
 
         BusinessActorScope scope = scope(actor);
+        FixedToolExecutor.Session toolSession = toolExecutor.open(scope);
         LinkedHashSet<String> allowedTools = new LinkedHashSet<>();
         String contextJson = "{}";
         String directResponse = null;
@@ -134,7 +139,8 @@ public final class ContextResolverRegistry {
                 if (effectiveUserQuery != null) {
                     java.util.concurrent.atomic.AtomicReference<KnowledgeResolution> resolved =
                             new java.util.concurrent.atomic.AtomicReference<>();
-                    String response = executeTool(runId, actor, "knowledge.search.v1", scope, allowedTools, false,
+                    String response = executeTool(runId, actor, "knowledge.search.v1", toolSession,
+                            allowedTools, false,
                             requestJson(Map.of("query", effectiveUserQuery, "sourceScope", List.of(), "topK", 5)),
                             () -> {
                                 KnowledgeResolution value = resolveKnowledge(effectiveUserQuery, actor);
@@ -148,41 +154,41 @@ public final class ContextResolverRegistry {
                     citations = knowledgeResolution.citations();
                     retrievalTrace = knowledgeResolution.retrievalTrace();
                 } else {
-                    executeTool(runId, actor, "knowledge.search.v1", scope, allowedTools, false,
+                    executeTool(runId, actor, "knowledge.search.v1", toolSession, allowedTools, false,
                             availabilityRequest(normalizedSurface), this::availableResponse);
                 }
-                executeTool(runId, actor, "dormitory.get_capacity_summary.v1", scope, allowedTools, false,
-                        availabilityRequest(normalizedSurface), this::availableResponse);
-                executeTool(runId, actor, "notice.list_published.v1", scope, allowedTools, false,
-                        availabilityRequest(normalizedSurface), this::availableResponse);
             }
             case "DASHBOARD" -> {
                 requireContext(normalizedContext, contextId, "DASHBOARD", false);
                 BusinessReadFacade.BusinessReadRequest request =
                         new BusinessReadFacade.BusinessReadRequest("dashboard.context.v1", Map.of());
-                contextJson = executeTool(runId, actor, "dashboard.query_metric.v1", scope, allowedTools, true,
+                contextJson = executeTool(runId, actor, "dashboard.query_metric.v1", toolSession,
+                        allowedTools, true,
                         businessRequest(request), () -> businessReads.read(scope, request).payloadJson());
             }
             case "REPAIR" -> {
                 requireContext(normalizedContext, contextId, "REPAIR", true);
                 BusinessReadFacade.BusinessReadRequest request = new BusinessReadFacade.BusinessReadRequest(
                         "repair.context.v1", Map.of("repairOrderId", Long.toString(contextId)));
-                contextJson = executeTool(runId, actor, "repair.get_context.v1", scope, allowedTools, true,
+                contextJson = executeTool(runId, actor, "repair.get_context.v1", toolSession,
+                        allowedTools, true,
                         businessRequest(request), () -> businessReads.read(scope, request).payloadJson());
             }
             case "NOTICE" -> {
                 requireContext(normalizedContext, contextId, "NOTICE", true);
+                requirePermissions(actor, Set.of("ai:assistant:use", "notice:read"));
                 BusinessReadFacade.BusinessReadRequest request = new BusinessReadFacade.BusinessReadRequest(
                         "notice.context.v1", Map.of("noticeId", Long.toString(contextId)));
-                contextJson = executeTool(runId, actor, "notice.list_published.v1", scope, allowedTools, true,
-                        businessRequest(request), () -> businessReads.read(scope, request).payloadJson());
+                contextJson = runId == null
+                        ? availableResponse()
+                        : businessReads.read(scope, request).payloadJson();
             }
             case "KNOWLEDGE" -> {
                 requireContext(normalizedContext, contextId, "KNOWLEDGE", false);
                 if (effectiveUserQuery != null) {
                     java.util.concurrent.atomic.AtomicReference<KnowledgeResolution> resolved =
                             new java.util.concurrent.atomic.AtomicReference<>();
-                    executeTool(runId, actor, "knowledge.search.v1", scope, allowedTools, true,
+                    executeTool(runId, actor, "knowledge.search.v1", toolSession, allowedTools, true,
                             requestJson(Map.of("query", effectiveUserQuery, "sourceScope", List.of(), "topK", 5)),
                             () -> {
                                 KnowledgeResolution value = resolveKnowledge(effectiveUserQuery, actor);
@@ -196,7 +202,7 @@ public final class ContextResolverRegistry {
                     citations = knowledgeResolution.citations();
                     retrievalTrace = knowledgeResolution.retrievalTrace();
                 } else {
-                    executeTool(runId, actor, "knowledge.search.v1", scope, allowedTools, true,
+                    executeTool(runId, actor, "knowledge.search.v1", toolSession, allowedTools, true,
                             availabilityRequest(normalizedSurface), this::availableResponse);
                 }
             }
@@ -247,7 +253,7 @@ public final class ContextResolverRegistry {
             String runId,
             AiActorContext actor,
             String id,
-            BusinessActorScope scope,
+            FixedToolExecutor.Session session,
             Set<String> selected,
             boolean required,
             String requestRedacted,
@@ -256,8 +262,17 @@ public final class ContextResolverRegistry {
         if (definition == null) throw new IllegalStateException("固定工具定义不存在: " + id);
         Instant startedAt = Instant.now();
         try {
-            tools.requireAuthorized(id, scope);
+            if (runId == null) {
+                session.preflight(id);
+                selected.add(id);
+                return availableResponse();
+            }
+            String response = session.execute(id, requestRedacted, work);
             selected.add(id);
+            appendToolAudit(runId, actor, definition, requestRedacted, response,
+                    AiToolCallAuditPort.AuthorizationDecision.ALLOWED,
+                    AiToolCallAuditPort.State.SUCCEEDED, null, startedAt, Instant.now());
+            return response;
         } catch (ToolDeniedException denied) {
             appendToolAudit(runId, actor, definition, requestRedacted, null,
                     AiToolCallAuditPort.AuthorizationDecision.DENIED,
@@ -265,15 +280,11 @@ public final class ContextResolverRegistry {
             if (!required) return null;
             throw new AiApiException(HttpStatus.FORBIDDEN, "AI_CONTEXT_PERMISSION_DENIED",
                     "无权读取该页面的 AI 上下文", false);
-        }
-        if (runId == null) {
-            // 创建会话/重试前的预校验只验证固定工具和 fresh RBAC，不触碰业务事实源。
-            return availableResponse();
-        }
-        final String response;
-        try {
-            response = work.get();
-            if (response == null) throw new IllegalStateException("工具响应不能为空");
+        } catch (ToolExecutionException contractFailure) {
+            appendToolAudit(runId, actor, definition, requestRedacted, null,
+                    AiToolCallAuditPort.AuthorizationDecision.ALLOWED,
+                    AiToolCallAuditPort.State.FAILED, contractFailure.errorCode(), startedAt, Instant.now());
+            throw contractFailure;
         } catch (RuntimeException failure) {
             String denialCode = denialCode(failure);
             if (denialCode != null) {
@@ -287,10 +298,13 @@ public final class ContextResolverRegistry {
                     AiToolCallAuditPort.State.FAILED, "AI_TOOL_EXECUTION_FAILED", startedAt, Instant.now());
             throw failure;
         }
-        appendToolAudit(runId, actor, definition, requestRedacted, response,
-                AiToolCallAuditPort.AuthorizationDecision.ALLOWED,
-                AiToolCallAuditPort.State.SUCCEEDED, null, startedAt, Instant.now());
-        return response;
+    }
+
+    private void requirePermissions(AiActorContext actor, Set<String> permissions) {
+        if (actor == null || !actor.permissionCodes().containsAll(permissions)) {
+            throw new AiApiException(HttpStatus.FORBIDDEN, "AI_CONTEXT_PERMISSION_DENIED",
+                    "无权读取该页面的 AI 上下文", false);
+        }
     }
 
     private String denialCode(RuntimeException failure) {

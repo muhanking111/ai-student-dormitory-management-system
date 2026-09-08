@@ -11,6 +11,7 @@ import com.example.dormitory.ai.domain.model.ActorDescriptor;
 import com.example.dormitory.ai.domain.model.AiCapability;
 import com.example.dormitory.ai.domain.model.ModelUsage;
 import com.example.dormitory.ai.port.AiToolCallAuditPort;
+import com.example.dormitory.ai.security.ActorAuthorizationFacade;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.function.Executable;
@@ -49,6 +50,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 })
 class JdbcAiConversationRunStoreEdgeCasesTest {
 
+    private final com.example.dormitory.ai.governance.StandardToolCatalogManifest standardCatalog =
+            new com.example.dormitory.ai.governance.StandardToolCatalogManifest(
+                    com.example.dormitory.ai.tool.ToolCatalog.standard(), new com.fasterxml.jackson.databind.ObjectMapper());
+
     @Autowired
     private JdbcTemplate jdbc;
 
@@ -63,6 +68,9 @@ class JdbcAiConversationRunStoreEdgeCasesTest {
 
     @Autowired
     private PlatformTransactionManager transactionManager;
+
+    @Autowired
+    private ActorAuthorizationFacade authorization;
 
     @BeforeEach
     void resetFacts() {
@@ -81,11 +89,59 @@ class JdbcAiConversationRunStoreEdgeCasesTest {
                 + "activated_at=CURRENT_TIMESTAMP");
         jdbc.update("INSERT INTO ai_tool_catalog_version "
                         + "(version,manifest_text,manifest_hash,status,active_slot_key,activated_at,created_at,updated_at) "
-                        + "VALUES ('edge-v1','{\"tools\":[]}',?,'ACTIVE','runtime',CURRENT_TIMESTAMP,"
+                        + "VALUES (?, ?, ?,'ACTIVE','runtime',CURRENT_TIMESTAMP,"
                         + "CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)",
-                "a".repeat(64));
+                standardCatalog.version(), standardCatalog.manifest(), standardCatalog.hash());
         long policy = insertPolicy(10, "ACTIVE", "GLOBAL", "*");
         insertBucket(policy, "GLOBAL", "*", "fake");
+    }
+
+    @Test
+    void activeCatalogMustMatchTheRunningCodeForReadinessAndRunCreation() {
+        AiActorContext actor = actor(7L, List.of("ADMIN"), hash('b'), hash('c'));
+        String conversation = store.createConversation(actor, "GLOBAL", "GLOBAL", null).id();
+        assertTrue(store.readiness(actor.userId(), "fake").toolCatalogActive());
+        jdbc.update("UPDATE ai_tool_catalog_version SET manifest_text='{}'");
+        assertFalse(store.readiness(actor.userId(), "fake").toolCatalogActive());
+        AiApiException failure = assertThrows(AiApiException.class,
+                () -> createAssistantRun(actor, conversation, "untrusted-tool-config"));
+        assertEquals("AI_TOOL_CATALOG_INACTIVE", failure.errorCode());
+        assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM ai_run", Integer.class));
+        jdbc.update("UPDATE ai_tool_catalog_version SET manifest_text=?,version='v1'", standardCatalog.manifest());
+        assertFalse(store.readiness(actor.userId(), "fake").toolCatalogActive());
+        assertThrows(AiApiException.class, () -> createAssistantRun(actor, conversation, "old-tool-config"));
+        jdbc.update("UPDATE ai_tool_catalog_version SET version=?,manifest_hash=?", standardCatalog.version(), "b".repeat(64));
+        assertFalse(store.readiness(actor.userId(), "fake").toolCatalogActive());
+        jdbc.update("UPDATE ai_tool_catalog_version SET manifest_hash=?,manifest_text='not-json'", standardCatalog.hash());
+        assertFalse(store.readiness(actor.userId(), "fake").toolCatalogActive());
+        assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM ai_run", Integer.class));
+    }
+
+    @Test
+    void legacyReconciliationFilterFindsCostStateWithoutChangingRunLifecycle() {
+        AiActorContext actor = actor(7L, List.of("ADMIN"), hash('b'), hash('c'));
+        String conversation = store.createConversation(actor, "GLOBAL", "GLOBAL", null).id();
+        String run = createAssistantRun(actor, conversation, "cost-filter").run().id();
+        jdbc.update("UPDATE ai_run SET state='FAILED',cost_status='NEEDS_RECONCILIATION' WHERE public_id=?", run);
+        var filter = new com.example.dormitory.ai.application.run.AiRunRecords.AuditRunFilter(
+                null, null, null, "NEEDS_RECONCILIATION", null);
+        var page = store.auditRuns(filter, 1, 20);
+        assertEquals(1, page.total());
+        assertEquals(run, page.records().getFirst().id());
+        assertEquals("FAILED", page.records().getFirst().state());
+        assertEquals("NEEDS_RECONCILIATION", page.records().getFirst().costStatus());
+        var explicit = new com.example.dormitory.ai.application.run.AiRunRecords.AuditRunFilter(
+                null, null, null, "FAILED", null, "NEEDS_RECONCILIATION");
+        assertEquals(run, store.auditRuns(explicit, 1, 20).records().getFirst().id());
+        var otherCost = new com.example.dormitory.ai.application.run.AiRunRecords.AuditRunFilter(
+                null, null, null, "FAILED", null, "FINAL");
+        assertEquals(0, store.auditRuns(otherCost, 1, 20).total());
+        assertThrows(IllegalArgumentException.class, () ->
+                new com.example.dormitory.ai.application.run.AiRunRecords.AuditRunFilter(
+                        null, null, null, null, null, "invalid"));
+        assertThrows(IllegalArgumentException.class, () ->
+                new com.example.dormitory.ai.application.run.AiRunRecords.AuditRunFilter(
+                        null, null, null, "NEEDS_RECONCILIATION", null, "FINAL"));
     }
 
     @Test
@@ -592,8 +648,10 @@ class JdbcAiConversationRunStoreEdgeCasesTest {
     }
 
     private AiActorContext knowledgeActor() {
-        return new AiActorContext(7L, "session", hash('b'), 1, hash('c'), List.of("ADMIN"),
-                List.of("ai:assistant:use", "ai:knowledge:read"), ActorDescriptor.user(7L));
+        Long userId = jdbc.queryForObject("SELECT id FROM sys_user WHERE username='admin'", Long.class);
+        var snapshot = authorization.snapshot(userId);
+        return new AiActorContext(userId, "session", hash('b'), 1, hash('c'), snapshot.roleCodes(),
+                snapshot.permissionCodes(), ActorDescriptor.user(userId));
     }
 
     private CitationCandidate insertActiveCitation(long actorUserId, String quote) {

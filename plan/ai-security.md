@@ -2,7 +2,15 @@
 
 > 状态：生产前强制安全合同。
 > 适用对象：AI REST/SSE、模型与 Embedding 调用、RAG、知识文件、工具、审批、风险中心、审计和供应商适配。
-> 本文最初作为生产前安全合同编写；阶段 0–6 对应的应用内控制现已落地并通过当前验收。生产 KMS、外部审计锚、供应商正式数据条款、生产数据基础设施与灾备等环境级事项仍须在上线前完成，具体以本文“生产前安全评审事项”和 [AI 验证与验收](./ai-verification.md) 为准。
+> 本文区分应用内安全合同与生产外部门；是否通过以 [AI 验证与验收](./ai-verification.md) 的同日证据为准，历史阶段完成不覆盖后续修改。生产 KMS、外部审计锚、供应商正式数据条款、生产数据基础设施与灾备等仍须在上线前完成。
+
+## 2026-09-08 本地交付边界
+
+- 工具目录 v2 仅包含 3 个上下文执行入口、2 个服务端提案入口、2 个非执行预留 ID；provider-callable 集合为空。运行入口与 readiness 校验当前标准版本、manifest hash 和规范化内容，不允许“记录旧目录、执行新代码”。旧目录仅作历史事实；通过原治理 API 的 step-up、CAS、审计及 outbox 激活新目录。
+- FixedToolExecutor 对当前固定 shape、调用次数、UTF-8 响应字节数与结果准入时限做检查；不是通用 JSON Schema 引擎，也不是可中断任意阻塞 handler 的 hard timeout。固定本地 handler 的资源约束与 provider 自身超时分别负责各自边界。
+- step-up 密码核验与 proof 签发持有用户行锁，与密码更新/旧 proof 撤销串行化；不降低密码要求、会话检查或一次性消费约束。
+- grounded assistant 和 knowledge command 的最终提交在同一事务内按 run → user/membership/role → knowledge source/version/chunk 顺序锁定事实，重算当前权限并与起点权限比较。撤权先提交则拒绝写入正文、delta、citation 和完成事件；最终提交先获得授权锁则撤权等待其提交。SSE 发送与后续引用访问仍执行各自的会话/权限再校验。
+- Demo 使用隔离库、Fake provider 和 Windows 用户绑定的持久加密 keyring。它不提供生产 KMS、跨用户密钥迁移或灾备保证；缺失/损坏已有密钥不能用重置数据库掩盖。
 
 ## 安全目标
 

@@ -57,7 +57,7 @@ class StepUpAuthenticationServiceConcurrencyTest {
                 )
                 """);
         rbac = mock(RbacService.class);
-        when(rbac.verifyEnabledUserPassword(eq(7L), anyString())).thenReturn(false);
+        when(rbac.verifyEnabledUserPasswordForUpdate(eq(7L), anyString())).thenReturn(false);
         service = new StepUpAuthenticationService(
                 rbac,
                 mock(RecentAuthenticationPolicy.class),
@@ -94,7 +94,7 @@ class StepUpAuthenticationServiceConcurrencyTest {
             assertEquals(3, outcomes.stream().filter("AI_STEP_UP_RATE_LIMITED"::equals).count());
         }
 
-        verify(rbac, times(5)).verifyEnabledUserPassword(7L, "wrong-password");
+        verify(rbac, times(5)).verifyEnabledUserPasswordForUpdate(7L, "wrong-password");
         assertEquals(5, jdbc.queryForObject(
                 "SELECT failure_count FROM ai_step_up_failure_window WHERE actor_user_id=7", Integer.class));
     }

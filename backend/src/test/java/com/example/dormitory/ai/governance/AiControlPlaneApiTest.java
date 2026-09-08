@@ -278,12 +278,42 @@ class AiControlPlaneApiTest {
     }
 
     @Test
+    void oldActiveCatalogRemainsVisibleForCasUpgradeWithoutRewritingItsManifest() throws Exception {
+        String token = login("admin", "test-password-123");
+        String oldHash = "a".repeat(64);
+        jdbcTemplate.update("INSERT INTO ai_tool_catalog_version "
+                        + "(version,manifest_text,manifest_hash,status,active_slot_key,created_at,updated_at) "
+                        + "VALUES ('legacy-v1','{}',?,'ACTIVE','runtime',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)", oldHash);
+        MvcResult listed = mockMvc.perform(get("/api/ai/tool-catalogs").header("Authorization", token))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.length()").value(2))
+                .andExpect(jsonPath("$.data[0].active").value(true))
+                .andExpect(jsonPath("$.data[0].toolIds.length()").value(0))
+                .andExpect(jsonPath("$.data[1].version").value("v2")).andReturn();
+        assertEquals(1, count("SELECT COUNT(*) FROM ai_tool_catalog_version"), "GET remains read-only");
+        JsonNode target = body(listed).get(1);
+        String id = target.path("id").asText();
+        String manifestHash = target.path("manifestHash").asText();
+        String previous = body(listed).get(0).path("id").asText();
+        Map<String, String> request = Map.of("version", "v2", "manifestHash", manifestHash, "expectedActiveId", previous);
+        String requestHash = hash(Map.of("catalogId", id, "version", "v2", "manifestHash", manifestHash, "expectedActiveId", previous));
+        mockMvc.perform(post("/api/ai/tool-catalogs/{id}/activate", id)
+                        .header("Authorization", token).header("Idempotency-Key", UUID.randomUUID().toString())
+                        .header("X-Step-Up-Proof", issueProof(token, "CONFIG_ACTIVATE", id, requestHash))
+                        .contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isNoContent());
+        assertEquals("{}", jdbcTemplate.queryForObject("SELECT manifest_text FROM ai_tool_catalog_version WHERE version='legacy-v1'", String.class));
+        assertEquals("INACTIVE", jdbcTemplate.queryForObject("SELECT status FROM ai_tool_catalog_version WHERE version='legacy-v1'", String.class));
+        assertEquals("v2", jdbcTemplate.queryForObject("SELECT version FROM ai_tool_catalog_version WHERE active_slot_key='runtime'", String.class));
+        assertEquals(1, count("SELECT COUNT(*) FROM ai_audit_event WHERE event_type='TOOL_CATALOG_ACTIVATED'"));
+    }
+
+    @Test
     void toolCatalogActivationAcceptsOnlyTheCanonicalSevenToolManifest() throws Exception {
         String token = login("admin", "test-password-123");
         MvcResult listResult = mockMvc.perform(get("/api/ai/tool-catalogs")
                         .header("Authorization", token))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data[0].version").value("v1"))
+                .andExpect(jsonPath("$.data[0].version").value("v2"))
                 .andExpect(jsonPath("$.data[0].toolIds.length()").value(7))
                 .andExpect(jsonPath("$.data[0].manifestHash")
                         .value(org.hamcrest.Matchers.matchesPattern("[0-9a-f]{64}")))
@@ -293,9 +323,9 @@ class AiControlPlaneApiTest {
         JsonNode catalog = body(listResult).get(0);
         String id = catalog.path("id").asText();
         String manifestHash = catalog.path("manifestHash").asText();
-        String requestBody = "{\"version\":\"v1\",\"manifestHash\":\"" + manifestHash
+        String requestBody = "{\"version\":\"v2\",\"manifestHash\":\"" + manifestHash
                 + "\",\"expectedActiveId\":null}";
-        String requestHash = hash(Map.of("catalogId", id, "version", "v1",
+        String requestHash = hash(Map.of("catalogId", id, "version", "v2",
                 "manifestHash", manifestHash, "expectedActiveId", ""));
 
         mockMvc.perform(post("/api/ai/tool-catalogs/{id}/activate", id)

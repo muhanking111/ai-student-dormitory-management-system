@@ -18,6 +18,7 @@ import {
   stage5AuditDetails,
   stage5AuditRuns,
   stage5Proposals,
+  stage5ReferenceInstant,
   stage5RiskCases,
 } from './stage5-governance-fixtures'
 
@@ -195,6 +196,7 @@ async function createPageInContext(
   permissions?: string[],
 ) {
   const page = await context.newPage()
+  await page.clock.setFixedTime(new Date(stage5ReferenceInstant))
   await page.setViewportSize(viewport)
   const mockApiControl = await mockApi(page, true)
   if (permissions) mockApiControl.setSessionPermissions(permissions)
@@ -666,6 +668,7 @@ test.afterAll(async () => {
     finishedAt: new Date().toISOString(),
     generatedAt: new Date().toISOString(),
     fixtureAsOf: stage5AsOf,
+    fixtureReferenceInstant: stage5ReferenceInstant,
     status: suiteFailed || hasFailedTest || existsSync(failureMarkerPath)
       ? 'failed'
       : screenshotRecords.length === expectedScreenshotCount && actualCaptureFileCount === expectedScreenshotCount ? 'passed' : 'partial',

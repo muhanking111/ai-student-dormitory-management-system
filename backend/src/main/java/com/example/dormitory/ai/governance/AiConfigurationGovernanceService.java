@@ -235,12 +235,14 @@ public class AiConfigurationGovernanceService {
     public List<ToolCatalogView> listToolCatalogs() {
         List<ToolCatalogView> persisted = jdbcTemplate.query(
                 "SELECT version,manifest_hash,status,active_slot_key,created_at,activated_at "
-                        + "FROM ai_tool_catalog_version WHERE manifest_hash=? ORDER BY id",
+                        + "FROM ai_tool_catalog_version WHERE manifest_hash=? OR active_slot_key='runtime' ORDER BY id",
                 this::mapToolCatalog, standardCatalog.hash());
-        if (!persisted.isEmpty()) return persisted;
-        return List.of(new ToolCatalogView(
+        if (persisted.stream().anyMatch(row -> standardCatalog.hash().equals(row.manifestHash()))) return persisted;
+        var choices = new java.util.ArrayList<>(persisted);
+        choices.add(new ToolCatalogView(
                 toolCatalogPublicId(standardCatalog.hash()), standardCatalog.version(), standardCatalog.hash(),
                 "DRAFT", false, standardCatalog.toolIds(), null, null));
+        return List.copyOf(choices);
     }
 
     @Transactional
@@ -307,7 +309,8 @@ public class AiConfigurationGovernanceService {
         String hash = rs.getString("manifest_hash");
         return new ToolCatalogView(toolCatalogPublicId(hash), rs.getString("version"), hash,
                 rs.getString("status"), "runtime".equals(rs.getString("active_slot_key")),
-                standardCatalog.toolIds(), instant(rs, "created_at"), nullableInstant(rs, "activated_at"));
+                standardCatalog.hash().equals(hash) ? standardCatalog.toolIds() : List.of(),
+                instant(rs, "created_at"), nullableInstant(rs, "activated_at"));
     }
 
     private void ensureStandardCatalog() {

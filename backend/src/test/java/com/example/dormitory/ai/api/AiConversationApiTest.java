@@ -56,6 +56,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 })
 class AiConversationApiTest {
 
+    private final com.example.dormitory.ai.governance.StandardToolCatalogManifest standardCatalog =
+            new com.example.dormitory.ai.governance.StandardToolCatalogManifest(
+                    com.example.dormitory.ai.tool.ToolCatalog.standard(), new com.fasterxml.jackson.databind.ObjectMapper());
+
     @Autowired
     private MockMvc mockMvc;
 
@@ -91,7 +95,7 @@ class AiConversationApiTest {
                         + "(version, manifest_text, manifest_hash, status, active_slot_key, activated_at, "
                         + "created_at, updated_at) VALUES (?, ?, ?, 'ACTIVE', 'runtime', CURRENT_TIMESTAMP, "
                         + "CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
-                "v1", "{\"tools\":[]}", "a".repeat(64));
+                standardCatalog.version(), standardCatalog.manifest(), standardCatalog.hash());
         jdbcTemplate.update("INSERT INTO ai_quota_policy "
                         + "(scope_type, scope_key, capability, daily_token_limit, monthly_cost_limit, "
                         + "concurrent_run_limit, status, effective_from, created_at, updated_at) "

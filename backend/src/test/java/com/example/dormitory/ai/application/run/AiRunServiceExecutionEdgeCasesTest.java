@@ -369,6 +369,20 @@ class AiRunServiceExecutionEdgeCasesTest {
     }
 
     @Test
+    void groundedResponseRechecksSessionAfterFinalContextResolution() {
+        Fixture fixture = new Fixture();
+        CitationCandidate citation = citation("source-1", "version-1", "chunk-1", "受控知识正文");
+        fixture.prepareAssistant("受控知识正文", new TestStream(ignored -> { }), List.of(citation));
+        fixture.createMessage();
+        AtomicInteger checks = new AtomicInteger();
+        when(fixture.actors.stillValid(any(), anyString())).thenAnswer(ignored -> checks.incrementAndGet() == 1);
+        fixture.executor.runCaptured();
+        verify(fixture.store, never()).completeRunWithFinalDelta(any(), any(), any(), any(), any(),
+                anyBoolean(), anyBoolean(), any(), any());
+        verify(fixture.store).failRun(fixture.runId, "AI_SESSION_REVOKED", false);
+    }
+
+    @Test
     void groundedDirectResponseCompletesAndPublishesDeltaInOneAtomicStoreCall() {
         Fixture fixture = new Fixture();
         CitationCandidate citation = citation("source-1", "version-1", "chunk-1", "受控知识正文");

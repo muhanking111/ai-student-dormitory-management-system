@@ -32,6 +32,9 @@
         <logback.version>1.5.38</logback.version>
         <jackson-bom.version>2.21.5</jackson-bom.version>
         <netty.version>4.1.136.Final</netty.version>
+        <tomcat.version>10.1.59</tomcat.version>
+        <log4j2.version>2.25.5</log4j2.version>
+        <surefire.reportsDirectory>${project.build.directory}/surefire-reports</surefire.reportsDirectory>
         <spring-ai.version>1.1.8</spring-ai.version>
         <langchain4j.version>1.12.1</langchain4j.version>
         <jacoco.version>0.8.15</jacoco.version>
@@ -129,6 +132,13 @@
     <build>
         <plugins>
             <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <reportsDirectory>${surefire.reportsDirectory}</reportsDirectory>
+                </configuration>
+            </plugin>
+            <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
             </plugin>
@@ -145,6 +155,7 @@
                         <artifactId>jacoco-maven-plugin</artifactId>
                         <version>${jacoco.version}</version>
                         <configuration>
+                            <append>false</append>
                             <includes>
                                 <include>com/example/dormitory/ai/**</include>
                             </includes>

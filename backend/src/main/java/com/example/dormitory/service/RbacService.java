@@ -291,9 +291,19 @@ public class RbacService {
                 user.getId(), Boolean.TRUE.equals(user.getEnabled()), user.getDisplayName()));
     }
 
+    @Transactional
     public boolean verifyEnabledUserPassword(Long userId, String rawPassword) {
+        return verifyEnabledUserPasswordForUpdate(userId, rawPassword);
+    }
+
+    /**
+     * 在调用方事务中锁定账号后验证 step-up 密码，使 proof 签发与改密/停用使用同一用户行串行化。
+     */
+    @Transactional
+    public boolean verifyEnabledUserPasswordForUpdate(Long userId, String rawPassword) {
         if (userId == null || userId < 1 || rawPassword == null) return false;
-        UserAccount user = userAccountMapper.selectById(userId);
+        UserAccount user = userAccountMapper.selectOne(Wrappers.<UserAccount>query()
+                .eq("id", userId).last("FOR UPDATE"));
         return user != null
                 && Boolean.TRUE.equals(user.getEnabled())
                 && passwordEncoder.matches(rawPassword, user.getPasswordHash());

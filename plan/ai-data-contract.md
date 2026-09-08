@@ -98,8 +98,8 @@ step-up 认证失败窗口以 MySQL 中的 `ai_step_up_failure_window` 为跨实
 - `object_key` 采用 content-addressed key；MySQL 不保存 provider 的签名 URL。客户端不能提交原始 `object_key`、bucket、URL 或“实测 checksum”；上传必须先绑定服务端 `upload session + owner + source + expected checksum`，且 upload target 只允许对随机隔离 key 做一次条件 PUT。
 - finalize 立即撤销/过期写 target，由服务端自行读取并记录 observed size/checksum、object versionId/ETag；扫描、parser 和 embedding 都按固定 version/ETag 读取并再次核对 checksum。扫描后对象被覆盖、版本切换、过期 presign 或重复 finalize 一律拒绝/隔离；只有 `SCANNED_CLEAN` 的固定对象版本才能创建 document version。
 - `content_redacted` 仅保存允许引用的脱敏片段；若场景要求保留受保护原文，原文放在对象存储并使用独立访问审计。
-- 向量 metadata 至少带 source public ID、document version public ID、chunk public ID、classification、version visibility、active public approval snapshot hash、permission digest 和 content hash；public filter 必须以命中的 chunk/version 为粒度。
-- source permission 变化必须原子递增 `acl_version`、清理带 permission digest 的 retrieval cache 并发出 metadata refresh；后置 ACL 过滤立即执行，确保撤权先安全生效，授权新增可在 metadata refresh 后可见而无需重新 Embedding。
+- 生产外部向量适配器启用前，metadata 至少带 source public ID、document version public ID、chunk public ID、classification、version visibility、active public approval snapshot hash、permission digest 和 content hash；public filter 必须以命中的 chunk/version 为粒度。
+- 当前 source permission 变化原子递增 `acl_version`，检索每次前后使用 MySQL 当前 ACL；当前无独立 retrieval cache，内存向量仅保存版本/source/hash。外部向量适配器启用前必须补 permission digest cache 失效和 metadata refresh；该外部投影扩展暂不实施，不能据内存索引存在宣称 PR-02 完成。
 - 激活新版本时，在一个 MySQL 事务中更新 `document.current_version_id`、版本状态并写 outbox；旧版本进入 RETIRED。
 
 ### 会话、运行、流与引用
@@ -169,19 +169,25 @@ outbox 用于知识摄取、索引更新、离线评测、指标派生和成功�
 
 ## 状态枚举
 
+本表自 2026-09-08 按实际数据库与服务迁移拆分。兼容枚举不代表存在创建或取消入口；未列出的任意状态转换仍拒绝。审计成本通过独立 `costStatus` 字段筛选，旧 `state=NEEDS_RECONCILIATION` 请求仅作兼容映射，不改变 run.state。
+
 | 聚合 | 合法状态 |
 | --- | --- |
-| model/prompt/tool catalog | DRAFT、ACTIVE、INACTIVE、RETIRED |
-| knowledge source/document | ACTIVE、SUSPENDED、RETIRED |
-| document version | REGISTERED、PARSING、CHUNKING、EMBEDDING、READY、RETRYABLE_FAILED、QUARANTINED、RETIRED |
+| model deployment / alias | deployment 使用 enabled；alias 绑定 deployment，不共用状态枚举 |
+| prompt / tool catalog | DRAFT、ACTIVE、INACTIVE、RETIRED（仅允许已实现的治理迁移） |
+| knowledge source | ACTIVE、PAUSED |
+| document | 文档身份与 current_version_id；生命周期主要由 version 管理 |
+| document version | PENDING、READY、ACTIVE、RETIRED、QUARANTINED |
 | upload session | CREATED、UPLOADING、UPLOADED、SCANNING、SCANNED_CLEAN、QUARANTINED、FINALIZED、EXPIRED |
-| ingestion job/outbox | PENDING、PROCESSING、SUCCEEDED、RETRYABLE_FAILED、DEAD |
+| ingestion job | QUEUED、RUNNING、SUCCEEDED、FAILED、DEAD |
+| outbox | PENDING、PROCESSING、SUCCEEDED、RETRYABLE_FAILED、DEAD |
 | conversation | ACTIVE、ARCHIVED |
-| run | ACCEPTED、QUEUED、RUNNING、STREAMING、SUCCEEDED、DEGRADED、FAILED、TIMED_OUT、CANCELLED |
+| run | ACCEPTED、QUEUED、RUNNING、STREAMING、SUCCEEDED、FAILED、TIMED_OUT、CANCELLED；DEGRADED 为兼容预留值，当前用结果中的降级标识表示 |
+| run cost_status | RESERVED、ESTIMATED、FINAL、RELEASED、UNKNOWN、NEEDS_RECONCILIATION；与 run 生命周期分离 |
 | tool call | REQUESTED、DENIED、RUNNING、SUCCEEDED、FAILED、TIMED_OUT |
-| proposal | DRAFT、PENDING_APPROVAL、APPROVED、EXECUTING、SUCCEEDED、REJECTED、EXPIRED、STALE、CANCELLED、FAILED |
+| proposal | PENDING_APPROVAL、APPROVED、EXECUTING、NEEDS_REVIEW、SUCCEEDED、REJECTED、EXPIRED、STALE、FAILED；DRAFT/CANCELLED 保留枚举兼容，不提供任意创建/取消迁移 |
 | approval | APPROVE、REJECT |
-| execution | PENDING、RUNNING、SUCCEEDED、FAILED、NEEDS_REVIEW |
+| execution | EXECUTING、SUCCEEDED、FAILED、NEEDS_REVIEW（只有合法前态迁移；不使用 PENDING/RUNNING 代替真实值） |
 | idempotency | PENDING、COMPLETED、FAILED、EXPIRED |
 | step-up grant | ACTIVE、USED、EXPIRED、REVOKED |
 | budget reservation | RESERVED、COMMITTED、RELEASED、EXPIRED |
@@ -189,11 +195,12 @@ outbox 用于知识摄取、索引更新、离线评测、指标派生和成功�
 | risk scan | QUEUED、RUNNING、SUCCEEDED、PARTIAL、FAILED、NEEDS_REVIEW |
 | risk case | OPEN、ACKNOWLEDGED、RESOLVED、DISMISSED |
 | eval | QUEUED、RUNNING、PASSED、FAILED、CANCELLED |
-| erasure job/target | PENDING、PROCESSING、SUCCEEDED、PARTIAL、RETRYABLE_FAILED、NEEDS_REVIEW、RETAINED |
+| erasure job | PENDING、PROCESSING、SUCCEEDED、PARTIAL、RETRYABLE_FAILED、NEEDS_REVIEW |
+| erasure target | PENDING、VERIFIED、RETRYABLE_FAILED、NEEDS_REVIEW、RETAINED |
 
 状态机以 [AI 总计划](./ai-master-plan.md#7-状态机) 为准；表中的状态集合不能被自由组合。
 
-execution 恢复仅允许 `NEEDS_REVIEW → RUNNING/SUCCEEDED/FAILED`：RUNNING 要求 reconfirm 已证明未执行且快照未变，SUCCEEDED 只用于对账已存在的原子业务结果，FAILED 用于冲突/明确不可恢复；任何不确定状态继续 NEEDS_REVIEW。所有分支复用原 row 和递增 version。
+execution 恢复仅允许 `NEEDS_REVIEW → EXECUTING/SUCCEEDED/FAILED`：EXECUTING 要求 reconfirm 已证明未执行且快照未变，SUCCEEDED 只用于对账已存在的原子业务结果，FAILED 用于冲突/明确不可恢复；任何不确定状态继续 NEEDS_REVIEW。所有分支复用原 row 和递增 version。
 
 ## REST API
 
@@ -315,15 +322,16 @@ execution 恢复仅允许 `NEEDS_REVIEW → RUNNING/SUCCEEDED/FAILED`：RUNNING 
 | event type | payload 最小字段 | 是否持久化/可回放 |
 | --- | --- | --- |
 | `run.accepted` | capability | 是 |
-| `run.started` | modelAlias、promptVersion | 是 |
+| `run.queued` | 运行排队状态 | 是 |
+| `run.started` | modelAlias | 是 |
 | `message.delta` | textDelta | 合并批次后是 |
 | `citation.added` | citationId、label、locator、rank | 是 |
-| `tool.started` | toolName、callId、redactedSummary | 是 |
-| `tool.completed` | callId、status、redactedSummary | 是 |
-| `proposal.created` | proposalId、actionType、riskLevel | 是 |
+| `tool.started` | 预留扩展 | 当前不发出；工具事实由审计查询返回 |
+| `tool.completed` | 预留扩展 | 当前不发出；工具事实由审计查询返回 |
+| `proposal.created` | 预留扩展 | 当前不发出；提案通过命令结果/列表查询获得 |
 | `usage.updated` | inputTokens、outputTokens、costEstimate、currency、estimateFlag | 是 |
-| `run.degraded` | mode、reasonCode | 是 |
-| `run.completed` | messageId、finishReason | 是 |
+| `run.degraded` | 预留扩展 | 当前不发出；降级由终态结果的安全字段表示 |
+| `run.completed` | 助手结果的 messageId/finishReason，或对应命令的结构化结果 | 是 |
 | `run.failed` | errorCode、retryable、safeMessage | 是 |
 | `heartbeat` | serverTime | 否 |
 
@@ -338,7 +346,7 @@ SSE 不发送内部堆栈、原始工具参数、provider request ID 中的敏�
   "metricIds": ["repair.pending.count"],
   "dateRange": {"preset": "LAST_30_DAYS"},
   "dimensions": ["repairType"],
-  "filters": {"buildingIds": []},
+  "filters": {"repairTypes": ["水电维修"]},
   "presentationHint": "TABLE"
 }
 ~~~
@@ -346,6 +354,7 @@ SSE 不发送内部堆栈、原始工具参数、provider request ID 中的敏�
 - metric、dimension、filter key 都必须存在于 `MetricCatalog`。
 - 服务端验证现有数值业务 ID 的存在性、对象权限和允许范围；模型永远看不到表名，也不能把 ID 直接拼进查询表达式。
 - 最大时间范围、组合数量和行数由 metric 定义控制。
+- 当前默认目录不支持 buildingId/buildingIds；楼栋维度扩展暂不实施。维修指标支持 repairType/repairTypes，其他默认指标不开放额外维度。不能将公共类型中的预留字段当作默认目录能力。
 
 ### RepairTriage v1
 
@@ -368,23 +377,19 @@ SSE 不发送内部堆栈、原始工具参数、provider request ID 中的敏�
 {
   "title": "公告标题",
   "type": "通知",
-  "publisher": "当前审批人显示名",
   "status": "草稿",
-  "content": "纯文本正文",
-  "sourceCitationIds": ["uuid"]
+  "content": "纯文本正文"
 }
 ~~~
 
-`publisher` 在执行时由当前账号重写，不能信任模型值。`status` 固定为“草稿”，任何“已发布”值都拒绝。
+执行 payload 只接受 title/type/status/content。publisher/operator 从真实会话取得；引用及解释属于 preview/evidence，不混入执行参数。`status` 固定为“草稿”，任何“已发布”值都拒绝。
 
 ### RepairAssignProposal v1
 
 ~~~json
 {
   "repairOrderId": 123,
-  "currentAssigneeUserId": null,
-  "proposedAssigneeUserId": 45,
-  "reasoningSummary": "脱敏后的建议原因"
+  "assigneeUserId": 45
 }
 ~~~
 
@@ -392,13 +397,15 @@ SSE 不发送内部堆栈、原始工具参数、provider request ID 中的敏�
 
 ## 工具白名单
 
+目录保留 7 个固定 ID 以兼容旧记录，区分运行时上下文、内部提案、预留三种用途。当前不向模型注册 provider-callable 工具；容量摘要和公告列表预留工具不执行，也不记录伪造成功。公告页面上下文经独立业务 Facade 重取，不冒充 notice.list_published.v1。实际已执行上下文使用关闭字段集合校验、字节上限、次数计数和结果截止时间；同步 handler 的截止时间表示拒绝超时结果，不代表能够强制终止数据库阻塞。
+
 | Tool ID | 输入 | 输出 | 调用时权限 | 审批/执行权限 |
 | --- | --- | --- | --- | --- |
 | `knowledge.search.v1` | query、source scope、topK | 脱敏片段与 citation candidate | `ai:knowledge:read` + source permission | 不适用 |
-| `dashboard.query_metric.v1` | DashboardQueryIntent | 固定 metric result | `ai:dashboard:query` + metric permission | 不适用 |
+| `dashboard.query_metric.v1`（当前上下文） | 固定 dashboard.context.v1 请求 | 授权 cards；独立 DashboardQueryIntent 命令由指标服务处理 | `ai:dashboard:query` + metric permission | 不适用 |
 | `repair.get_context.v1` | 现有 repair 数值 ID | 脱敏报修快照 | `ai:repair:triage` + `repair:read` + actor-aware `RepairAccessPolicy`；REPAIRER 必须仍是当前 assignee | 不适用 |
-| `dormitory.get_capacity_summary.v1` | 现有 building/dormitory 数值 ID | 聚合容量，不含学生明细 | `ai:assistant:use` + `dormitory:read` | 不适用 |
-| `notice.list_published.v1` | keyword、limit | 已发布公告摘要 | `ai:assistant:use` + `notice:read` | 不适用 |
+| `dormitory.get_capacity_summary.v1`（预留，不执行） | 预留 | 无运行结果 | `ai:assistant:use` + `dormitory:read` | 不适用 |
+| `notice.list_published.v1`（预留，不执行） | 预留 | 无运行结果 | `ai:assistant:use` + `notice:read` | 不适用 |
 | `repair.propose_assignment.v1` | validated triage + candidate | proposal public ID | `ai:repair:triage` + `repair:read` | `ai:approval:review` + `repair:write` + 现有 Service 的管理员分配规则 |
 | `notice.propose_draft.v1` | validated draft | proposal public ID | `ai:notice:draft` + `notice:read` | `ai:approval:review` + `notice:write` |
 
@@ -435,7 +442,7 @@ ToolCatalog 对每个工具固定：版本、描述、输入/输出 schema、req
 8. 业务 Service 变更和 execution SUCCEEDED 在同一 MySQL 事务中提交；失败时另一个独立事务记录 FAILED/NEEDS_REVIEW。execution 状态以 version/合法前态更新，不能创建第二个 attempt 绕过唯一 lease。
 9. 成功事务可同时写 outbox，供通知和分析使用；outbox 不负责模拟审批人执行。
 
-如果进程在审批已记录、业务事务未开始前退出，execution 标记 NEEDS_REVIEW；用户必须在新会话通过 reconfirm 端点重新确认。服务端先对账业务状态：结果已经原子提交则只把同一 execution 对账为 SUCCEEDED；能证明原事务未执行且当前 snapshot/hash 未变时，更新同一 execution 的 version/lease 后进入 RUNNING；结果不确定则保持 NEEDS_REVIEW，冲突则 FAILED/STALE 并要求新 proposal。系统不后台冒充审批人，也不创建第二个 execution attempt。
+如果进程在审批已记录、业务事务未开始前退出，execution 标记 NEEDS_REVIEW；用户必须在新会话通过 reconfirm 端点重新确认。服务端先对账业务状态：结果已经原子提交则只把同一 execution 对账为 SUCCEEDED；能证明原事务未执行且当前 snapshot/hash 未变时，更新同一 execution 的 version/lease 后进入 EXECUTING；结果不确定则保持 NEEDS_REVIEW，冲突则 FAILED/STALE 并要求新 proposal。系统不后台冒充审批人，也不创建第二个 execution attempt。
 
 `approval_policy_version` 决定是否允许 proposer 自审、所需独立审批人数和拒绝是否立即终止。达到 `required_approval_count` 前 proposal 保持 PENDING_APPROVAL，不创建 execution；政策改变时现有 proposal 标记 STALE 并重新预览。
 
@@ -451,14 +458,16 @@ ToolCatalog 对每个工具固定：版本、描述、输入/输出 schema、req
 | 事件 | 生产事务 | 消费者 | 失败处理 |
 | --- | --- | --- | --- |
 | `KnowledgeVersionRegistered.v1` | 创建 version | ingestion worker | 指数退避；超过上限进入 DEAD/QUARANTINED |
-| `KnowledgeVersionActivated.v1` | 激活 current version | cache/index cleanup | 旧索引保留到新版本已验证 |
-| `AiRunCompleted.v1` | run 终态 | usage/eval sampling/metrics | 可重放；不改变 run 事实 |
-| `ActionExecutionSucceeded.v1` | 业务写 + execution 成功事务 | 通知/分析 | 可重放；不得重复业务写 |
-| `RiskCaseOpened.v1` | 新风险案例 | 通知/待办 | 去重 key 防重复 |
-| `FeedbackRecorded.v1` | feedback 写入 | eval dataset curator | 人工筛除 PII 后进入数据集 |
+| `KnowledgeVersionActivated.v1` | 激活 current version | 内部 receipt 确认 | 当前 MySQL 版本/ACL 为真值；外部 cleanup 适配器暂不实施 |
+| `AiRunCompleted.v1` | run 终态 | 内部 receipt 确认 | usage 已在主事务处理；自动 eval sampling 暂不实施 |
+| `ActionExecutionSucceeded.v1` | 业务写 + execution 成功事务 | 内部 receipt 确认 | 不重复业务写；通知/分析订阅暂不实施 |
+| `RiskCaseOpened.v1` | 新风险案例 | 内部 receipt 确认 | 页面查询案例事实；外部通知暂不实施 |
+| `FeedbackRecorded.v1` | feedback 写入 | 内部 receipt 确认 | 自动进入评测/训练数据集暂不实施 |
 | `EvalRunRequested.v1` | eval 创建 | eval worker | 不影响线上请求 |
 
 消费者以 outbox public ID 做幂等；多实例锁定和归档策略在架构评审中压测。
+
+`ControlPlaneOutboxHandler` 的 SUCCEEDED 仅证明内部事件已校验和确认，不证明通知、分析、缓存或训练数据消费者已经运行。ActionProposalCreated/StateChanged、KnowledgeSourceChanged 与配置治理事件也使用该内部 receipt。若未来接入外部消费者，需要独立幂等回执和重放策略，不沿用内部确认冒充交付。
 
 ## 已实施迁移顺序与回退
 

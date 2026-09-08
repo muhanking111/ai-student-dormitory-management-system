@@ -142,6 +142,16 @@ describe('AI live audit compatibility preflight', () => {
 })
 
 describe('AI live control-plane bootstrap', () => {
+  it('activates the standard catalog through step-up and CAS rather than forging a manifest in SQL', () => {
+    const source = readFileSync(resolve(process.cwd(), 'e2e/ai-live-global-setup.ts'), 'utf8')
+    expect(source).not.toContain('INSERT INTO ai_tool_catalog_version')
+    expect(source).not.toContain('UPDATE ai_tool_catalog_version')
+    expect(source).toContain("'/api/ai/tool-catalogs'")
+    expect(source).toContain("'/api/security/step-up'")
+    expect(source).toContain("'/api/security/csrf'")
+    expect(source).toContain("'X-Step-Up-Proof'")
+    expect(source).toContain('expectedActiveId')
+  })
   it('activates the prompt required by the enabled fake risk explanation runtime', () => {
     const source = readFileSync(resolve(process.cwd(), 'e2e/ai-live-global-setup.ts'), 'utf8')
     const runtimePromptBlock = source.match(/const runtimePrompts = \[([\s\S]*?)\] as const/)?.[1] ?? ''

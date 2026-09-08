@@ -21,7 +21,7 @@
 9. `AI_PROVIDER_ACTIVE=fake` 只允许 `dev`/`test`。没有真实凭证时保持 `none`；生产开启 Spring AI 还必须配置非空 provider credential 和合法 model alias。首期知识对象/向量实现仍是受控 Fake，生产开启 Knowledge 会由 `KNOWLEDGE_PRODUCTION_ADAPTERS_REQUIRED` 拒绝启动，直到独立评审通过。
 10. 只有 P4.4 审批、step-up、唯一 execution lease、现有 Service 执行和审计链全链通过后，才允许设置 `AI_WRITE_EXECUTION_ENABLED=true`。
 
-生产 AI 开启但上述 MySQL、Redis、备份、密钥或 provider 条件不满足时，`ProductionAiSecurityGate` 会使应用启动失败。AI 关闭时该门不阻断原业务。
+生产 AI 开启但上述 MySQL、Redis、备份、密钥或 provider 条件不满足时，`ProductionAiSecurityGate` 会使应用启动失败。AI 关闭时不执行 AI 专用基础设施门；prod 全局 Secure Cookie 条件仍需满足。
 
 ## 3. 建议灰度顺序
 
@@ -98,6 +98,14 @@
 5. 从固定对象版本重建知识索引，验证 checksum、ACL 和 citation；不得用缓存或向量库反向覆盖 MySQL 事实。
 6. 运行 AI 总开关关闭下的原业务全量 E2E，再运行 Fake Adapter 合同与只读 AI 冒烟。
 7. 记录 RTO、RPO、负责人、失败项和证据路径；没有真实演练记录时必须标记 `NOT RUN`。
+
+## 本地演示重启
+
+`.demo/keys/{mode}.json` 使用当前 Windows 用户的 DPAPI 加密保存每个模式的 HMAC keyring，重启复用以验证已有审计链。该文件不公开、不跨用户复制；历史临时密钥已丢失且存在审计数据时，保留数据库并单独决定归档/重置，不伪造旧链验证。预检不生成密钥或改写 state；陈旧 state 只有在项目身份、固定数据库、进程和端口均核实后才可恢复。
+
+keyring 与 state 限制为当前用户、SYSTEM 和 Administrators 访问，通过同目录临时文件、持久刷新和原子替换发布。start/stop/reset 使用机器级命名互斥锁，第二条并发生命周期命令会被拒绝；不会由失败的一方停止另一方刚启动的环境。复用 Docker 资源前检查所有容器（包括 stopped）、working directory、Compose 配置路径、服务标签和固定卷挂载；没有可证明归属的 state、孤立卷或其他 checkout 的同名项目一律拒绝自动接管。意外丢失 state/key 时保留现场排查，不执行猜测性删除或重建。
+
+标准 ToolCatalog v2 由脚本使用现有登录、CSRF、step-up 和治理 API 做 CAS 激活，旧 manifest 不覆盖。脚本不能绕开已损坏的审计链或目录内容检查。`-KeepInfrastructure` 仅停止自有前后端，保留演示 MySQL/Redis；完整重新启动前先用正常 `demo-stop.ps1` 停止自有基础设施。
 
 ## 8. 发布与交接证据
 

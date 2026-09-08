@@ -31,12 +31,15 @@ import com.example.dormitory.ai.application.run.AiRunRecords.Run;
 import com.example.dormitory.ai.application.run.AiRunRecords.RunCreation;
 import com.example.dormitory.ai.application.run.AiRunRecords.RunMutation;
 import com.example.dormitory.ai.config.AiProperties;
+import com.example.dormitory.ai.governance.StandardToolCatalogManifest;
+import com.example.dormitory.ai.approval.CanonicalJsonHasher;
 import com.example.dormitory.ai.domain.model.AiCapability;
 import com.example.dormitory.ai.domain.model.ActorDescriptor;
 import com.example.dormitory.ai.infrastructure.persistence.JdbcAiBudgetService;
 import com.example.dormitory.ai.infrastructure.persistence.JdbcAiUsageLedgerRepository;
 import com.example.dormitory.ai.infrastructure.persistence.JdbcAiOutboxRepository;
 import com.example.dormitory.ai.knowledge.KnowledgeVersionRepository;
+import com.example.dormitory.ai.security.ActorAuthorizationFacade;
 import com.example.dormitory.common.PageResponse;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -80,6 +83,8 @@ public class JdbcAiConversationRunStore implements AiConversationRunStore {
     private final AiProperties properties;
     private final KnowledgeVersionRepository knowledgeVersions;
     private final JdbcAiOutboxRepository outbox;
+    private final StandardToolCatalogManifest standardCatalog;
+    private final ActorAuthorizationFacade actorAuthorization;
 
     public JdbcAiConversationRunStore(
             JdbcTemplate jdbcTemplate,
@@ -90,7 +95,9 @@ public class JdbcAiConversationRunStore implements AiConversationRunStore {
             AiRuntimeCrypto crypto,
             AiProperties properties,
             KnowledgeVersionRepository knowledgeVersions,
-            JdbcAiOutboxRepository outbox) {
+            JdbcAiOutboxRepository outbox,
+            StandardToolCatalogManifest standardCatalog,
+            ActorAuthorizationFacade actorAuthorization) {
         this.jdbcTemplate = jdbcTemplate;
         this.objectMapper = objectMapper;
         this.budgetService = budgetService;
@@ -100,6 +107,8 @@ public class JdbcAiConversationRunStore implements AiConversationRunStore {
         this.properties = properties;
         this.knowledgeVersions = knowledgeVersions;
         this.outbox = outbox;
+        this.standardCatalog = standardCatalog;
+        this.actorAuthorization = actorAuthorization;
     }
 
     @Override
@@ -648,6 +657,7 @@ public class JdbcAiConversationRunStore implements AiConversationRunStore {
             throw new IllegalArgumentException("grounded 与 citation 事实不一致");
         }
         if (!safeCitations.isEmpty()) {
+            permissions = lockAndRequireFreshCitationPermissions(run, permissions);
             lockCitationSourcesAndAuthorize(safeCitations, permissions);
         }
         BillingSubject subject = new BillingSubject(BillingSubject.Kind.RUN, runId);
@@ -757,6 +767,17 @@ public class JdbcAiConversationRunStore implements AiConversationRunStore {
                 "当前知识授权已撤销", false);
     }
 
+    private Set<String> lockAndRequireFreshCitationPermissions(
+            LockedRun run,
+            Set<String> initialPermissions) {
+        var fresh = actorAuthorization.snapshotForUpdate(run.actorUserId());
+        Set<String> freshPermissions = Set.copyOf(fresh.permissionCodes());
+        if (!fresh.enabled() || !freshPermissions.equals(initialPermissions)) {
+            throw citationAccessRevoked();
+        }
+        return freshPermissions;
+    }
+
     private CitationTarget requireCitationTarget(CitationCandidate citation, Set<String> actorPermissionCodes) {
         if (citation.chunkPublicId() == null || citation.chunkPublicId().isBlank()) {
             throw new IllegalArgumentException("知识 citation 缺少 chunk 绑定");
@@ -814,8 +835,13 @@ public class JdbcAiConversationRunStore implements AiConversationRunStore {
             throw new IllegalArgumentException("command citation rank 重复");
         }
         Set<String> permissions = actorPermissionCodes == null ? Set.of() : Set.copyOf(actorPermissionCodes);
+        if (!safeCitations.isEmpty()) {
+            permissions = lockAndRequireFreshCitationPermissions(run, permissions);
+        }
+        Set<String> authorizedPermissions = permissions;
         List<CitationBinding> citationBindings = safeCitations.stream()
-                .map(citation -> new CitationBinding(citation, requireCitationTarget(citation, permissions)))
+                .map(citation -> new CitationBinding(
+                        citation, requireCitationTarget(citation, authorizedPermissions)))
                 .toList();
 
         String assistantMessageId = null;
@@ -1071,6 +1097,7 @@ public class JdbcAiConversationRunStore implements AiConversationRunStore {
         addAuditFilter(where, parameters, "r.created_at <= ?", filter.to());
         addAuditFilter(where, parameters, "r.capability = ?", filter.capability());
         addAuditFilter(where, parameters, "r.state = ?", filter.state());
+        addAuditFilter(where, parameters, "r.cost_status = ?", filter.costStatus());
         if (filter.providerCode() != null) {
             where.append(" AND COALESCE(md.provider_code, 'fake') = ?");
             parameters.add(filter.providerCode());
@@ -1272,8 +1299,7 @@ public class JdbcAiConversationRunStore implements AiConversationRunStore {
     public Readiness readiness(long actorUserId, String providerCode) {
         boolean prompt = count("SELECT COUNT(*) FROM ai_prompt_version WHERE prompt_key = 'assistant.system' "
                 + "AND status = 'ACTIVE' AND active_slot_key = 'assistant.system'") > 0;
-        boolean tool = count("SELECT COUNT(*) FROM ai_tool_catalog_version WHERE status = 'ACTIVE' "
-                + "AND active_slot_key = 'runtime'") > 0;
+        boolean tool = !activeStandardToolCatalog().isEmpty();
         boolean budget = !applicableBudgetsFor(actorUserId, List.of(), providerCode).isEmpty()
                 || count("SELECT COUNT(*) FROM ai_budget_bucket WHERE scope_type = 'GLOBAL' AND scope_key = '*' "
                 + "AND capability = 'ASSISTANT' AND provider_code = ? AND period_start <= CURRENT_TIMESTAMP "
@@ -1349,14 +1375,29 @@ public class JdbcAiConversationRunStore implements AiConversationRunStore {
                         + "ORDER BY activated_at DESC, id DESC LIMIT 1",
                 (resultSet, rowNum) -> new VersionRow(resultSet.getLong("id"), resultSet.getString("version")),
                 promptKey, promptKey);
-        List<VersionRow> tools = jdbcTemplate.query(
-                "SELECT id, version FROM ai_tool_catalog_version WHERE status = 'ACTIVE' "
-                        + "AND active_slot_key = 'runtime' ORDER BY activated_at DESC, id DESC LIMIT 1",
-                (resultSet, rowNum) -> new VersionRow(resultSet.getLong("id"), resultSet.getString("version")));
-        if (prompts.isEmpty() || tools.isEmpty()) {
+        List<VersionRow> tools = activeStandardToolCatalog();
+        if (tools.isEmpty()) {
+            throw AiApiException.unavailable("AI_TOOL_CATALOG_INACTIVE", "当前代码的标准工具目录尚未激活或内容不匹配");
+        }
+        if (prompts.isEmpty()) {
             throw AiApiException.unavailable("AI_RUNTIME_CONFIG_INACTIVE", "AI 运行版本尚未激活");
         }
         return new ActiveConfig(prompts.getFirst().id(), prompts.getFirst().version(), tools.getFirst().id());
+    }
+
+    private List<VersionRow> activeStandardToolCatalog() {
+        return jdbcTemplate.query(
+                "SELECT id,version,manifest_text FROM ai_tool_catalog_version WHERE status='ACTIVE' "
+                        + "AND active_slot_key='runtime' AND version=? AND manifest_hash=?",
+                (rs, row) -> {
+                    try {
+                        return standardCatalog.manifest().equals(CanonicalJsonHasher.canonicalize(rs.getString("manifest_text")))
+                                ? new VersionRow(rs.getLong("id"), rs.getString("version")) : null;
+                    } catch (IllegalArgumentException invalidManifest) {
+                        return null;
+                    }
+                }, standardCatalog.version(), standardCatalog.hash())
+                .stream().filter(java.util.Objects::nonNull).toList();
     }
 
     private List<BudgetCandidate> applicableBudgets(AiActorContext actor, String providerCode) {
@@ -1467,7 +1508,7 @@ public class JdbcAiConversationRunStore implements AiConversationRunStore {
     }
 
     private String auditRunSelect() {
-        return "SELECT r.public_id,parent.public_id AS parent_run_public_id,r.capability,r.state,"
+        return "SELECT r.public_id,parent.public_id AS parent_run_public_id,r.capability,r.state,r.cost_status,"
                 + "COALESCE(md.provider_code, 'fake') AS provider_alias, "
                 + "p.version AS prompt_version, "
                 + "(SELECT COUNT(*) FROM ai_citation c WHERE c.run_id=r.id) AS citation_count, "
@@ -1490,7 +1531,7 @@ public class JdbcAiConversationRunStore implements AiConversationRunStore {
                 resultSet.getString("chain_hash"), resultSet.getLong("input_tokens"),
                 resultSet.getLong("output_tokens"), resultSet.getBigDecimal("estimated_cost"),
                 resultSet.getString("failure_code"), instant(resultSet, "created_at"),
-                nullableInstant(resultSet, "finished_at"));
+                nullableInstant(resultSet, "finished_at"), resultSet.getString("cost_status"));
     }
 
     private int count(String sql, Object... args) {

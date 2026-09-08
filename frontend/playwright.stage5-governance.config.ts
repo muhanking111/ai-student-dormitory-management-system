@@ -2,6 +2,8 @@ import { defineConfig, devices } from '@playwright/test'
 import baseConfig from './playwright.config'
 
 const baseURL = 'http://127.0.0.1:5178'
+const outputName = (process.env.VISUAL_OUTPUT_NAME?.trim() || 'stage5-governance-20260802-a')
+  .replace(/[^A-Za-z0-9._-]/g, '_')
 
 export default defineConfig({
   ...baseConfig,
@@ -12,7 +14,7 @@ export default defineConfig({
   expect: { timeout: 15_000 },
   fullyParallel: false,
   workers: 1,
-  outputDir: 'test-results/stage5-governance-run',
+  outputDir: `test-results/${outputName}/playwright`,
   use: {
     ...baseConfig.use,
     baseURL,

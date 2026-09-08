@@ -566,6 +566,13 @@ paths:
           schema:
             type: string
             enum: [ACCEPTED, QUEUED, RUNNING, STREAMING, SUCCEEDED, DEGRADED, FAILED, TIMED_OUT, CANCELLED, NEEDS_RECONCILIATION]
+          description: run 生命周期；NEEDS_RECONCILIATION 仅作为旧客户端兼容别名，等价 costStatus 筛选。
+        - name: costStatus
+          in: query
+          description: 成本状态独立于 run 生命周期，可与 FAILED 等 state 联合筛选。冲突的旧 state 别名返回参数错误。
+          schema:
+            type: string
+            enum: [RESERVED, ESTIMATED, FINAL, RELEASED, UNKNOWN, NEEDS_RECONCILIATION]
         - name: provider
           in: query
           schema: { type: string, pattern: '^[a-z0-9][a-z0-9-]{1,31}$' }
@@ -1142,7 +1149,8 @@ components:
           type: array
           maxItems: 2
           uniqueItems: true
-          items: { type: string, enum: [buildingId, repairType] }
+          description: 当前默认目录仅维修指标支持 repairType；楼栋维度暂不实施。
+          items: { type: string, enum: [repairType] }
         filters: { $ref: '#/components/schemas/DashboardFilters' }
         presentationHint: { type: string, enum: [CARD, TABLE, LINE, BAR] }
     DashboardDateRange:
@@ -1155,11 +1163,6 @@ components:
       type: object
       additionalProperties: false
       properties:
-        buildingIds:
-          type: array
-          maxItems: 20
-          uniqueItems: true
-          items: { type: string, pattern: '^[1-9][0-9]{0,17}$' }
         repairTypes:
           type: array
           maxItems: 3

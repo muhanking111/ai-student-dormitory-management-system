@@ -1128,6 +1128,7 @@ function mapAuditRun(value: unknown): AiAuditRun {
   return {
     id: string(raw.id, '审计运行 '),
     parentRunId: nullableString(raw.parentRunId, '审计运行 '),
+    costStatus: nullableString(raw.costStatus, '审计成本状态 '),
     capability: string(raw.capability, '审计运行 '),
     state: string(raw.state, '审计运行 ').toLowerCase() as AiAuditRun['state'],
     modelAlias: string(raw.providerAlias, '审计运行 '),

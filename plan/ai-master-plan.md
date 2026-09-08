@@ -1,5 +1,7 @@
 # 现代 AI 智能学生宿舍管理系统总计划
 
+> 2026-09-08 当前范围：本地交付必要修复、合同同步与统一验收已完成，精确结果见 `ai-verification.md` 同日记录。已补工具执行/目录钉扎、状态/payload、授权并发、成本筛选、依赖和演示脚本，并修正未等待真实完成的测试。自动通知/分析订阅、反馈自动入库、通用多轮 Agent、AI 楼栋维度扩展暂不实施；未使用的 SSE 扩展事件按预留处理。真实供应商及 PR-01 至 PR-06 继续保持 NOT RUN / NOT APPROVED。下方旧日期的完成文字是历史基线，不能替代本次验证。工作记录见 `.planning/20260908-140726-必要缺口修复与本地交付收口/`。修复验收与 Git 同步分别记录；提交身份以 Git 历史为准，本次不创建发布标签或部署。
+
 > 状态：阶段 0-6 后端/数据/安全能力已实现；9 图 UI 高保真 Stage 6 已完成 2026-08-09 用户 Dashboard 反馈整改、工程复验和用户肉眼验收；生产发布尚未批准。
 > 基线日期：2026-08-09。
 > 适用范围：Java 21 + Spring Boot 3.5.16 模块化单体、Vue 3 管理端、MySQL、Redis、Sa-Token/RBAC。
@@ -27,7 +29,7 @@
 | 9 图 UI 高保真落实与复验 | `COMPLETED` | 2026-08-09 Dashboard 圈注的固定类别色、右侧风险层级、待办七列字段和受权限约束的双操作已整改；Stage 6 全新候选链、工程门、独立 UI/安全复核和用户肉眼验收均已完成 |
 | 后端/数据/安全工程验收 | `COMPLETED` | 当前既有后端质量门、真实本地基础设施和安全边界证据继续有效；相关源码变化后必须重跑 |
 | UI 相关前端工程验收 | `COMPLETED` | 当前 Dashboard 反馈整改已通过 Vitest、typecheck、build、治理 `9/9`、Dashboard `8/8`、普通 E2E `72/72`、正式预览、同视口对照、Impeccable detector、两份独立 UI 增量复核、专项安全增量复核和用户肉眼验收 |
-| Route A 本地封版与公开发布 | `COMPLETED` | 2026-08-11 已完成 Stage 0-5.5；项目以 `Apache-2.0` 发布到 [GitHub public 仓库](https://github.com/muhanking111/ai-student-dormitory-management-system)。`rc-20260811.1` 因 CodeQL 5 个告警已失效；不可移动 tag `rc-20260811.2` 和公开 Release 与远程默认分支绑定同一最终提交 |
+| Route A 本地封版与公开发布 | `COMPLETED` | 2026-08-11 已完成 Stage 0-5.5；项目以 `Apache-2.0` 发布到 [GitHub public 仓库](https://github.com/muhanking111/ai-student-dormitory-management-system)。`rc-20260811.1` 因 CodeQL 5 个告警已失效；不可移动 tag `rc-20260811.2` 和公开 Release 保留原历史提交；当前 main 已有后续提交，二者不再同一提交 |
 | 生产外部依赖与发布门 | `NOT RUN / NOT APPROVED` | KMS、外部向量/对象/扫描、外部审计锚、供应商正式条款和生产灾备未验收 |
 | 阶段 7 预测模型与学生端 | `OUT OF SCOPE` | 不是本轮未完成项，不得混入生产门清单 |
 
@@ -65,7 +67,7 @@ AI 页面不是占位：
 - 生产默认仍是 `AI_ENABLED=false`、`AI_PROVIDER_ACTIVE=none`、`AI_WRITE_EXECUTION_ENABLED=false`。
 - MySQL 保存 run、版本、ACL、提案、审批、执行、预算、用量、审计和 outbox 的权威事实；Redis 只承担会话、短缓存和非权威并发加速。
 
-服务端固定工具目录只有 7 个版本化工具：
+服务端固定目录保留 7 个工具 ID。v2 manifest 明确：3 个运行时上下文工具（knowledge/dashboard/repair）、2 个内部提案工具、2 个预留工具（capacity/notice-list）；provider-callable 集合为空，预留工具不得记为执行成功：
 
 | 类型 | 工具 |
 | --- | --- |
@@ -179,15 +181,15 @@ flowchart LR
 
 `ACCEPTED -> QUEUED -> RUNNING -> STREAMING -> SUCCEEDED`
 
-- 运行态可进入 `CANCELLED`、`FAILED`、`TIMED_OUT` 或 `DEGRADED`。
+- 运行态可进入 `CANCELLED`、`FAILED`、`TIMED_OUT`；当前降级由结果中的安全字段表达，`DEGRADED` 与 `run.degraded` 为兼容预留，不承诺当前生产者。
 - 所有终态不可回退；重试创建新 run 并通过 `parent_run_id` 关联。
 - 流式期间会话或权限撤销时停止后续工具和敏感事件。
 
 ### 7.2 知识版本
 
-`REGISTERED -> PARSING -> CHUNKING -> EMBEDDING -> READY -> RETIRED`
+`PENDING -> READY -> ACTIVE -> RETIRED`；隔离失败进入 `QUARANTINED`。解析/Embedding 工作由独立 ingestion job 的 `QUEUED/RUNNING/SUCCEEDED/FAILED/DEAD` 管理。
 
-- 处理态可进入 `RETRYABLE_FAILED`；恶意文件、解析不可信或 ACL 缺失进入 `QUARANTINED`。
+- 文档版本和摄取任务使用不同状态；失败重试由 job/outbox 调度，不把任务处理态写入 document version。
 - 只有完整版本通过索引和抽检后才能原子切换 `current_version_id`。
 
 ### 7.3 提案、审批与执行
@@ -207,7 +209,10 @@ flowchart LR
 
 详细枚举、合法前态和数据约束以 [AI 数据契约](./ai-data-contract.md#状态枚举) 为准。
 
-## 8. 阶段路线与状态
+## 8. 历史阶段路线与当前维护
+
+下表描述 2026-08-09 至 08-11 的历史验收。当前必要修复、暂不实施项和本轮验证以本文顶部范围及 `ai-verification.md` 同日记录为准；历史 COMPLETED 不自动覆盖后续变更。
+
 
 | 阶段 | 交付范围 | 当前状态 | 主要验收 |
 | --- | --- | --- | --- |
@@ -278,7 +283,7 @@ PNG 决定各自页面主体或组件的结构、信息层级、尺寸关系、�
 | PD-02 | 每个知识源必须有 Owner、L0-L3 分类和显式 ACL；空 ACL 拒绝，公开版本由非 Owner 治理人员审批。 |
 | PD-03 | 首期两类低风险提案允许同一名同时具备 AI 审批权限和目标业务权限的真实用户审批；未来高风险动作另行评审四眼。 |
 | PD-04 | 初始限额：每用户 10 run/分钟、并发 2、输入 16k、输出 4k、最多 5 次只读工具；MySQL 预算为硬事实源。 |
-| PD-05 | 风险只含维修积压/重复报修、空床入住一致性异常和长期未处置运营待办；建议 SLA 高/中/低为 2/3/5 天。 |
+| PD-05 | 保留 6 个确定性原子信号：repair-backlog、repeat-repair、resource-checkin-inconsistency、long-pending-operation、failed-hygiene-check、overdue-payment，映射维修/入住资源/卫生/欠费 4 类；建议 SLA 高/中/低为 2/3/5 天。 |
 | PD-06 | 9 张最终 PNG 是对应页面主体/组件的唯一视觉合同；共享壳层冲突按当前源码、新鲜测试和本计划的统一尺寸/路由规则收敛。不再使用或等待 Figma，设计提示词统一放在 `plan/development-prompts.md`。 |
 
 ## 11. 生产就绪计划
@@ -304,7 +309,7 @@ PNG 决定各自页面主体或组件的结构、信息层级、尺寸关系、�
 - PR-02：对象存储、向量索引和扫描均有严格 Port、ACL、固定版本、隔离与 fail-closed 合同，但当前装配仍是内存对象/向量和受控纯文本扫描器；真实对象存储、向量库和恶意文件扫描产品尚未选定或验收。
 - PR-03：MySQL HMAC 审计链、Merkle cutoff、HTTPS-HMAC sink 协议和 receipt 校验已实现；独立不可变介质、失败补偿/跨日补锚、receipt 新鲜度门、可信 checkpoint、删除 tombstone 联动和灾备仍缺真实目标与证据。
 - PR-04：DeepSeek 技术合同不等于供应商合规；DPA、地域、留存/训练/删除、子处理方、退出方案和真实账单阈值仍需法务、安全、采购与平台输入。
-- PR-05：AI 生产 fail-fast 门已覆盖 MySQL/Redis TLS、ACL、最小权限、私网、Secure Cookie 和备份加密确认；该门只在 `prod + AI_ENABLED=true` 时运行，非 AI 生产启动路径尚无同等级的全局 Secure Cookie 启动门。本地 compose 与真实基础设施测试不证明生产拓扑、加密备份恢复或跨区 RPO/RTO。
+- PR-05：AI 生产 fail-fast 门已覆盖 MySQL/Redis TLS、ACL、最小权限、私网、Secure Cookie 和备份加密确认；Secure Cookie 检查覆盖 `prod` 全局路径；MySQL/Redis/KMS 等 AI 专用条件在 `AI_ENABLED=true` 时进一步检查。本地 compose 与真实基础设施测试不证明生产拓扑、加密备份恢复或跨区 RPO/RTO。
 - PR-06：确定性灰度分桶、Kill Switch、预算/限流与建议灰度顺序已存在；仓库仍无获批的负载模型、生产 SLO、实例拓扑、告警面板、成本阈值、值班责任和压测/灰度报告。
 
 进入真实实施前至少需要明确：目标云或基础设施产品、区域与网络拓扑、非生产验收账号/凭据注入方式、法务与数据处理条款、SLO/RPO/RTO/预算、灰度名单来源、告警与回滚阈值，以及允许执行外部读写测试的单独授权。在这些输入齐全前，生产默认保持 `AI_ENABLED=false`、provider `none`、写执行关闭。

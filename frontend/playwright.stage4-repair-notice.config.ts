@@ -2,6 +2,8 @@ import { defineConfig, devices } from '@playwright/test'
 import baseConfig from './playwright.config'
 
 const baseURL = 'http://127.0.0.1:5177'
+const outputName = (process.env.VISUAL_OUTPUT_NAME?.trim() || 'stage4-repair-notice-20260801-j')
+  .replace(/[^A-Za-z0-9._-]/g, '_')
 
 export default defineConfig({
   ...baseConfig,
@@ -11,7 +13,7 @@ export default defineConfig({
   expect: { timeout: 15_000 },
   fullyParallel: false,
   workers: 1,
-  outputDir: 'test-results/stage4-repair-notice-j-run',
+  outputDir: `test-results/${outputName}/playwright`,
   use: {
     ...baseConfig.use,
     baseURL,
@@ -22,6 +24,7 @@ export default defineConfig({
     env: {
       VITE_AI_DEMO_ENABLED: 'true',
       VITE_AI_ENABLED: 'false',
+      VITE_E2E_DISABLE_HMR: 'true',
       VITE_VISUAL_EVIDENCE_ENABLED: 'true',
     },
     reuseExistingServer: false,

@@ -13,6 +13,7 @@ import com.example.dormitory.ai.security.PiiClassificationService;
 import com.example.dormitory.ai.security.PiiRedactionService;
 import com.example.dormitory.ai.security.PromptInjectionGuard;
 import com.example.dormitory.ai.tool.ToolCatalog;
+import com.example.dormitory.ai.tool.ToolExecutionException;
 import com.example.dormitory.common.BusinessException;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
@@ -27,6 +28,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -38,7 +40,7 @@ class ContextResolverRegistryTest {
         ContextResolverRegistry registry = registry((scope, request) -> {
             observed.set(request);
             return new BusinessReadFacade.BusinessReadResult("repair-ai-context.v1",
-                    "{\"repairOrderId\":42,\"description\":\"已脱敏事实\"}", Instant.now());
+                    repairContext(42, "已脱敏事实"), Instant.now());
         });
 
         ContextResolverRegistry.Resolution result = registry.resolveForRun(UUID.randomUUID().toString(),
@@ -54,13 +56,13 @@ class ContextResolverRegistryTest {
 
     @Test
     void dashboardNoticeAndKnowledgeHaveStrictContextShapesAndPermissions() {
-        ContextResolverRegistry registry = registry((scope, request) ->
-                new BusinessReadFacade.BusinessReadResult("context.v1", "{\"safe\":true}", Instant.now()));
+        ContextResolverRegistry registry = registry((scope, request) -> new BusinessReadFacade.BusinessReadResult(
+                "context.v1", fixedContextResponse(request), Instant.now()));
 
         assertEquals(Set.of("dashboard.query_metric.v1"), registry.resolveForRun(UUID.randomUUID().toString(),
                 actor(Set.of("ai:assistant:use", "ai:dashboard:query", "dashboard:read")),
                 "DASHBOARD", "DASHBOARD", null, "概览").allowedToolIds());
-        assertEquals(Set.of("notice.list_published.v1"), registry.resolveForRun(UUID.randomUUID().toString(),
+        assertEquals(Set.of(), registry.resolveForRun(UUID.randomUUID().toString(),
                 actor(Set.of("ai:assistant:use", "notice:read")),
                 "NOTICE", "NOTICE", 7L, "公告").allowedToolIds());
         assertThrows(AiApiException.class, () -> registry.resolve(actor(Set.of("ai:assistant:use")),
@@ -108,11 +110,10 @@ class ContextResolverRegistryTest {
     }
 
     @Test
-    void runBoundResolutionAuditsAllFiveFixedReadToolsWithRedactedFacts() {
+    void runBoundResolutionAuditsOnlyExecutedToolsAndDoesNotAdvertiseReservedEntries() {
         List<AiToolCallAuditPort.ToolCallAudit> audits = new ArrayList<>();
-        ContextResolverRegistry registry = registry((scope, request) ->
-                new BusinessReadFacade.BusinessReadResult(request.queryId(),
-                        "{\"safe\":true,\"queryId\":\"" + request.queryId() + "\"}", Instant.now()), audits);
+        ContextResolverRegistry registry = registry((scope, request) -> new BusinessReadFacade.BusinessReadResult(
+                request.queryId(), fixedContextResponse(request), Instant.now()), audits);
         AiActorContext actor = actor(Set.of(
                 "ai:assistant:use", "ai:knowledge:read", "ai:dashboard:query",
                 "ai:repair:triage", "repair:read", "dormitory:read", "notice:read"));
@@ -129,9 +130,11 @@ class ContextResolverRegistryTest {
                 "GLOBAL", "NONE", null, "已脱敏查询");
 
         assertEquals(Set.of(
-                        "knowledge.search.v1", "dashboard.query_metric.v1", "repair.get_context.v1",
-                        "dormitory.get_capacity_summary.v1", "notice.list_published.v1"),
+                        "knowledge.search.v1", "dashboard.query_metric.v1", "repair.get_context.v1"),
                 audits.stream().map(AiToolCallAuditPort.ToolCallAudit::toolName).collect(java.util.stream.Collectors.toSet()));
+        assertTrue(audits.stream().noneMatch(audit -> Set.of(
+                        "dormitory.get_capacity_summary.v1", "notice.list_published.v1")
+                .contains(audit.toolName())));
         assertTrue(audits.stream().allMatch(audit ->
                 audit.authorizationDecision() == AiToolCallAuditPort.AuthorizationDecision.ALLOWED
                         && audit.state() == AiToolCallAuditPort.State.SUCCEEDED
@@ -189,7 +192,7 @@ class ContextResolverRegistryTest {
                 actor, "DASHBOARD", "DASHBOARD", null, null).allowedToolIds());
         assertEquals(Set.of("repair.get_context.v1"), registry.resolve(
                 actor, "REPAIR", "REPAIR", 42L, null).allowedToolIds());
-        assertEquals(Set.of("notice.list_published.v1"), registry.resolve(
+        assertEquals(Set.of(), registry.resolve(
                 actor, "NOTICE", "NOTICE", 7L, null).allowedToolIds());
         assertEquals(Set.of("knowledge.search.v1"), registry.resolve(
                 actor, "KNOWLEDGE", "KNOWLEDGE", null, null).allowedToolIds());
@@ -248,6 +251,26 @@ class ContextResolverRegistryTest {
         assertDenied(objectAudits.getFirst(), "AI_TOOL_OBJECT_ACCESS_DENIED");
     }
 
+    @Test
+    void closedOutputContractFailureIsAuditedAsAllowedFailureWithoutReturningData() {
+        List<AiToolCallAuditPort.ToolCallAudit> audits = new ArrayList<>();
+        ContextResolverRegistry registry = registry((scope, request) -> new BusinessReadFacade.BusinessReadResult(
+                "dashboard-ai-context.v1", "{\"cards\":[],\"unexpected\":true}", Instant.now()), audits);
+
+        ToolExecutionException failure = assertThrows(ToolExecutionException.class,
+                () -> registry.resolveForRun(UUID.randomUUID().toString(),
+                        actor(Set.of("ai:assistant:use", "ai:dashboard:query", "dashboard:read")),
+                        "DASHBOARD", "DASHBOARD", null, "概览"));
+
+        assertEquals("AI_TOOL_OUTPUT_SCHEMA_INVALID", failure.errorCode());
+        assertEquals(1, audits.size());
+        assertEquals(AiToolCallAuditPort.AuthorizationDecision.ALLOWED,
+                audits.getFirst().authorizationDecision());
+        assertEquals(AiToolCallAuditPort.State.FAILED, audits.getFirst().state());
+        assertEquals("AI_TOOL_OUTPUT_SCHEMA_INVALID", audits.getFirst().errorCode());
+        assertNull(audits.getFirst().responseRedacted());
+    }
+
     private void assertDenied(AiToolCallAuditPort.ToolCallAudit audit, String errorCode) {
         assertEquals(AiToolCallAuditPort.AuthorizationDecision.DENIED, audit.authorizationDecision());
         assertEquals(AiToolCallAuditPort.State.DENIED, audit.state());
@@ -283,5 +306,21 @@ class ContextResolverRegistryTest {
         List<String> sorted = permissions.stream().sorted().toList();
         return new AiActorContext(10, "token", "fingerprint", 1, "digest",
                 List.of("ADMIN"), sorted, ActorDescriptor.user(10L));
+    }
+
+    private static String fixedContextResponse(BusinessReadFacade.BusinessReadRequest request) {
+        return switch (request.queryId()) {
+            case "dashboard.context.v1" -> "{\"cards\":[]}";
+            case "repair.context.v1" -> repairContext(
+                    Long.parseLong(request.parameters().get("repairOrderId")), "已脱敏事实");
+            case "notice.context.v1" -> "{\"noticeId\":7,\"title\":\"公告\",\"status\":\"已发布\"}";
+            default -> throw new AssertionError("unexpected query: " + request.queryId());
+        };
+    }
+
+    private static String repairContext(long id, String description) {
+        return "{\"repairOrderId\":" + id + ",\"code\":\"R-" + id
+                + "\",\"type\":\"水电维修\",\"status\":\"待处理\",\"description\":\""
+                + description + "\",\"assigneeUserId\":null,\"asOf\":\"2026-09-08T14:00:00Z\"}";
     }
 }

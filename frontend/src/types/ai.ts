@@ -350,6 +350,7 @@ export interface AiAuditStep {
 }
 
 export interface AiAuditRun {
+  costStatus?: string | null
   id: string
   parentRunId?: string | null
   capability: string
@@ -368,6 +369,7 @@ export interface AiAuditRun {
 }
 
 export interface AiAuditRunQuery {
+  costStatus?: 'RESERVED' | 'ESTIMATED' | 'FINAL' | 'RELEASED' | 'UNKNOWN' | 'NEEDS_RECONCILIATION'
   page?: number
   pageSize?: number
   from?: string

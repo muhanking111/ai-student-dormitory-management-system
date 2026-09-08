@@ -1,6 +1,6 @@
 # AI 智能宿舍系统现行开发提示词
 
-> 更新日期：2026-08-04
+> 更新日期：2026-09-08
 > 本文是后续编码 Agent 的唯一现行提示词入口。`design/ai-prototypes/` 中 9 张最终 PNG 是唯一视觉合同；能力、接口、安全和状态语义分别以 `ai-master-plan.md`、`ai-data-contract.md`、`ai-security.md` 为准，验收证据以 `ai-verification.md` 为准。
 
 ## 1. 使用方法
@@ -8,7 +8,7 @@
 1. 选择下面一个页面任务，复制完整提示词执行；跨页面公共改动还要同时执行“设计系统与共用组件”提示词。
 2. 编码前必须用 `view_image` 查看任务列出的最终 PNG，并阅读现有页面、Store、API、路由与测试；不得仅凭文字或旧截图自由发挥。
 3. 不调用 Figma，不重新生成、替换或编辑原型图，不把 `candidates/` 当视觉合同。
-4. 这是阶段 0-6 后端/控制能力完成后的增量维护文档。不得把已存在的 `/api/ai/**`、SSE、知识治理、审批、审计或风险闭环从零重做；9 图 UI 高保真 Stage 1-6 已完成，当前唯一候选为 `20260809-dashboard-feedback-l`，并已通过自动化、制品、无障碍、同视口比较、Assessment A/B、专项安全门和用户肉眼验收。
+4. 本文用于现有能力的增量维护。20260809-dashboard-feedback-l 和 RC2 均是历史候选；当前修复范围与结果见总计划顶部及 ai-verification.md 同日记录，不复用旧 hash 作为新验证。
 5. 先复现和补测试，再做最小范围修改；保留当前业务流程、RBAC、错误处理与用户已有改动。
 
 ## 2. 统一执行合同
@@ -19,7 +19,7 @@
 2. 前端已有 `AiClient`、`HttpAiClient`、SSE parser、Pinia AI Store 和确定性 `DemoAiClient`。运行模式由现有环境开关选择：真实联调走 `http`，单测/本地确定性场景可走 `demo`，关闭时安全降级；页面不得直接 `fetch`、硬编码 fixture 或复制第二套状态机。
 3. 真实能力通过 `/api/ai/**`：POST 创建 conversation/run 或业务命令，GET `/api/ai/runs/{id}/events` 消费 `text/event-stream`；支持事件序列去重、`Last-Event-ID`、取消、重试、终态和断线处理。
 4. Cookie 写请求继续通过公共 `apiRequest()` 发送 CSRF token 并接受 Origin 校验；`401` 统一清理会话/CSRF 状态。不得用自写请求绕过这些防护。
-5. 服务端工具只允许固定的 7 个版本化工具：`knowledge.search.v1`、`dashboard.query_metric.v1`、`repair.get_context.v1`、`dormitory.get_capacity_summary.v1`、`notice.list_published.v1`、`repair.propose_assignment.v1`、`notice.propose_draft.v1`。模型不得直连数据库、生成/执行 SQL、调用任意 URL、命令、脚本或文件系统。
+5. v2 工具目录保留 7 个固定 ID，实际分为 3 个 runtime context、2 个 internal proposal、2 个 reserved（capacity/notice-list）；providerCallable 为空。固定 ID 为：`knowledge.search.v1`、`dashboard.query_metric.v1`、`repair.get_context.v1`、`dormitory.get_capacity_summary.v1`、`notice.list_published.v1`、`repair.propose_assignment.v1`、`notice.propose_draft.v1`。模型不得直连数据库、生成/执行 SQL、调用任意 URL、命令、脚本或文件系统。
 6. 首期提案 `actionType` 只有 `REPAIR_ASSIGN` 与 `NOTICE_CREATE_DRAFT`，对应版本化工具分别为 `repair.propose_assignment.v1` 与 `notice.propose_draft.v1`。所有业务写必须经过“AI 建议 -> 变更预览 -> 人工审批 -> 现有 Service 执行”；`APPROVED` 不等于成功，execution `SUCCEEDED` 才是业务成功。
 7. 继续执行服务端会话、权限、对象范围、payload/hash、业务 snapshot、过期时间和 recent-auth/step-up 校验。前端隐藏按钮只是体验，不是授权边界。
 8. 模型文本、引用和错误按纯文本渲染，禁止 `v-html`。无权限引用不显示正文；无可靠来源明确拒答；姓名、学号、手机号等 PII 默认不得进入模型。
@@ -38,7 +38,10 @@
 21. 视觉 fixture 只能构造确定性合法内容态并显式标记，不能伪造业务事实。高密度成功态、流式、空态、低置信、无来源、无权限、失败、取消、超时和禁用态必须分别留证。
 22. 自动化全绿、截图存在、无溢出或 Canvas 非空不能单独关闭 UI 高保真。所有 P0-P3 视觉 finding 关闭后仍需用户肉眼验收。
 
-## 3. 当前实现基线
+## 3. 实现基线和历史证据
+
+本节原始 PASS 来自历史候选，不代表本轮验证；当前脚本应使用显式参考时刻和唯一 VISUAL_OUTPUT_NAME，不把固定过期日期改成 2099 年。
+
 
 执行任务前先确认以下基线仍成立，不要通过删除断言或降级合同来“通过”测试：
 
@@ -47,7 +50,7 @@
 | 后端 | 当前候选的全量测试、AI 覆盖率、安全专项和真实 MySQL/Redis 门已通过；精确数字见 `ai-verification.md` |
 | 前端 | 当前候选的 Vitest、覆盖率、typecheck 与 build 门已通过；精确数字见 `ai-verification.md` |
 | 普通 E2E / AI-live | 当前候选均已通过；AI-live 使用真实应用/基础设施和确定性 Fake provider，不能当作真实供应商证据 |
-| 视觉 | 固定覆盖 22 个受保护路由、六个正式视口和 9 张最终 PNG；最终 `ew/ex/ey/ez/fa/fb/fc` 工程、完整性和三份独立终审均全零通过，精确状态见 `ai-verification.md` |
+| 视觉 | 固定覆盖 22 个受保护路由、六正式视口和 9 PNG；ew/ex/ey/ez/fa/fb/fc 与 l 均是历史制品，新变更重跑受影响门，结果见 ai-verification.md |
 | 工程状态 | 阶段 0-6 后端/控制能力 `COMPLETED`；UI 高保真复验 `COMPLETED`；阶段 7 `OUT OF SCOPE`；生产外部门仍为 `NOT RUN` |
 
 确定性 Fake provider 只用于本地可复现验收，不代表真实供应商或生产发布已批准。不要把本地 AI-live 通过描述成生产就绪。
@@ -261,7 +264,7 @@ Get-FileHash -Algorithm SHA256 .\test-results\visual\manifest.json
 
 1. 报告修改文件、行为变化、权限/安全影响和所有实际执行的命令；未运行项明确写 `NOT RUN` 与原因。
 2. 六视口逐一检查 network、console、page error、runtime、横向溢出、遮挡和 Canvas 非空；原型对应页面还要核对 9 个 prototype contracts。
-3. 当前 AI-live 必须证明真实 `HttpAiClient` 请求 `/api/ai/**`、助手 SSE、公告草稿提案和知识摄取可用，且没有绕过审批写业务；确定性 Fake provider 仅替代模型输出。维修分诊/提案尚未进入该 AI-live 用例，修改维修链路时必须补聚焦真实服务验证，不能引用现有 AI-live 结果作为维修覆盖证据；精确结果见 [AI 验证与验收](./ai-verification.md)。
+3. 当前 AI-live 必须证明真实 `HttpAiClient` 请求 `/api/ai/**`、助手 SSE、公告草稿提案和知识摄取可用，且没有绕过审批写业务；确定性 Fake provider 仅替代模型输出。通用 AI-live 与维修/公告专用 `playwright.ai-live-repair-notice-stage4.config.ts` 分开执行，修改维修链时必须运行对应专用验证；精确结果见 [AI 验证与验收](./ai-verification.md)。
 4. 任何新增业务写动作、工具、权限、状态或数据表都不属于普通页面改造，必须先更新总计划、数据契约和安全评审，再实施。
 5. 不删除旧断言、不降低覆盖率门、不关闭 CSRF/Origin/RBAC/审计、不用截图替代功能验证，也不把本地结果扩张为生产结论。
 6. 每个阶段开始前立即在活动任务计划标记 `in_progress`；阶段交付物和验证通过后，在同一工作会话立即改为 `completed` 并把命令与结果写入进度文件。验证失败或缺少环境/批准时标记 `blocked` / `NOT RUN` 并记录解阻条件，禁止到最终汇报再批量更新状态。

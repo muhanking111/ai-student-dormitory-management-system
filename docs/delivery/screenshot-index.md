@@ -20,7 +20,7 @@
 
 ## 当前运行证据摘要
 
-2026-08-11 当前应用候选完成正式六视口视觉门：22 个受保护路由、132 路由截图、19 Assistant 状态、9 prototype capture、1 画廊、共 159 PNG；源码/原型稳定性违规、API/request/console/page/runtime errors 和业务写均为 0。视觉 manifest SHA-256 为 `E84EC4F8D4519FEA57969BDDD9A33299877045F7C4AD17E8B5BAAFD6BB363656`。
+2026-08-11 历史 RC2 候选完成正式六视口视觉门：22 个受保护路由、132 路由截图、19 Assistant 状态、9 prototype capture、1 画廊、共 159 PNG；源码/原型稳定性违规、API/request/console/page/runtime errors 和业务写均为 0。视觉 manifest SHA-256 为 `9E31D3FD60F27A774D0BB7F7AF12F9954A1FC9DB5A749D21ABB663CAFD35DFEE`（原 E84… 是中间候选，不能作为 RC2 或本轮新验证）。
 
 运行截图、trace、测试报告和原始 comparison 是本地验收材料，可能包含本机端口、合成会话标识或调试元数据，因此默认不进入公开仓库。公开结论只维护在 [AI 验证与验收](../../plan/ai-verification.md) 和 RC 发布说明中。
 

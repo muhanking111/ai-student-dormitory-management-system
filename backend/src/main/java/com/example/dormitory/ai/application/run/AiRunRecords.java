@@ -181,7 +181,16 @@ public final class AiRunRecords {
             BigDecimal estimatedCost,
             String failureCode,
             Instant createdAt,
-            Instant finishedAt) {
+            Instant finishedAt,
+            String costStatus) {
+        public AuditRun(
+                String id, String parentRunId, String capability, String state, String providerAlias,
+                String promptVersion, long citationCount, String chainHash, long inputTokens, long outputTokens,
+                BigDecimal estimatedCost, String failureCode, Instant createdAt, Instant finishedAt) {
+            this(id, parentRunId, capability, state, providerAlias, promptVersion, citationCount, chainHash,
+                    inputTokens, outputTokens, estimatedCost, failureCode, createdAt, finishedAt, "UNKNOWN");
+        }
+
         public AuditRun(
                 String id, String parentRunId, String capability, String state, String providerAlias,
                 String promptVersion, long inputTokens, long outputTokens, BigDecimal estimatedCost,
@@ -204,12 +213,31 @@ public final class AiRunRecords {
             Instant to,
             String capability,
             String state,
-            String providerCode) {
+            String providerCode,
+            String costStatus) {
+        public AuditRunFilter(Instant from, Instant to, String capability, String state, String providerCode) {
+            this(from, to, capability, state, providerCode, null);
+        }
+
+        private static final java.util.Set<String> COST_STATES = java.util.Set.of(
+                "RESERVED", "ESTIMATED", "FINAL", "RELEASED", "UNKNOWN", "NEEDS_RECONCILIATION");
         private static final java.util.Set<String> STATES = java.util.Set.of(
                 "ACCEPTED", "QUEUED", "RUNNING", "STREAMING", "SUCCEEDED", "DEGRADED",
                 "FAILED", "TIMED_OUT", "CANCELLED", "NEEDS_RECONCILIATION");
 
         public AuditRunFilter {
+            if (costStatus != null) {
+                costStatus = costStatus.trim().toUpperCase(java.util.Locale.ROOT);
+                if (!COST_STATES.contains(costStatus)) throw new IllegalArgumentException("审计成本状态不合法");
+            }
+            // 兼容旧客户端的错误字段：成本对账不能作为 run 生命周期筛选。
+            if (state != null && "NEEDS_RECONCILIATION".equalsIgnoreCase(state.trim())) {
+                if (costStatus != null && !"NEEDS_RECONCILIATION".equals(costStatus)) {
+                    throw new IllegalArgumentException("审计生命周期与成本筛选冲突");
+                }
+                state = null;
+                costStatus = "NEEDS_RECONCILIATION";
+            }
             if (from != null && to != null && from.isAfter(to)) {
                 throw new IllegalArgumentException("审计开始时间不能晚于结束时间");
             }

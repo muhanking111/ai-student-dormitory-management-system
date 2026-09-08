@@ -14,27 +14,6 @@ WHERE prompt_key IN (
   'notice.system', 'repair.system', 'risk.system'
 ) AND version = 'v1';
 
-UPDATE ai_tool_catalog_version
-SET status = 'DRAFT', active_slot_key = NULL, activated_at = NULL
-WHERE active_slot_key = 'runtime';
-
-INSERT INTO ai_tool_catalog_version
-  (version, manifest_text, manifest_hash, status, active_slot_key, activated_at, created_at, updated_at)
-VALUES
-  (
-    'local-demo-v1',
-    '{"version":"local-demo-v1","tools":["knowledge.search.v1","dashboard.query_metric.v1","repair.get_context.v1","dormitory.get_capacity_summary.v1","notice.list_published.v1"]}',
-    SHA2('{"version":"local-demo-v1","tools":["knowledge.search.v1","dashboard.query_metric.v1","repair.get_context.v1","dormitory.get_capacity_summary.v1","notice.list_published.v1"]}', 256),
-    'ACTIVE', 'runtime', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
-  )
-ON DUPLICATE KEY UPDATE
-  manifest_text = VALUES(manifest_text),
-  manifest_hash = VALUES(manifest_hash),
-  status = 'ACTIVE',
-  active_slot_key = 'runtime',
-  activated_at = CURRENT_TIMESTAMP,
-  updated_at = CURRENT_TIMESTAMP;
-
 INSERT INTO ai_quota_policy
   (scope_type, scope_key, capability, daily_token_limit, monthly_cost_limit,
    concurrent_run_limit, status, effective_from, created_at, updated_at)

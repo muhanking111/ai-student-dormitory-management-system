@@ -1,6 +1,17 @@
 // @vitest-environment node
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
+
+it('waits for a retained-summary refresh to finish before Dashboard visual measurements', async () => {
+  const { readFileSync } = await import('node:fs')
+  for (const file of ['live-visual.spec.ts', 'ai-live-dashboard-stage3-visual.spec.ts']) {
+    const source = readFileSync(new URL(`../../e2e/${file}`, import.meta.url), 'utf8')
+    const afterQuery = source.slice(source.indexOf(".fill('本周待维修工单有多少？')"))
+    expect(afterQuery).toContain(".toHaveAttribute('aria-busy', 'false'")
+    expect(afterQuery.indexOf(".toHaveAttribute('aria-busy', 'false'"))
+      .toBeLessThan(afterQuery.indexOf('const geometry =') >= 0 ? afterQuery.indexOf('const geometry =') : afterQuery.indexOf('const layout ='))
+  }
+})
 import {
   captureFreshAssistantTurnEvidence,
   validateVisualManifestEvidence,
@@ -746,6 +757,49 @@ describe('Playwright visual backend capability contract', () => {
     expect(backendEnvironment?.AI_REDIS_KEY_PREFIX).toBe(expectedPrefix)
     expect(backendEnvironment?.DASHBOARD_CACHE_KEY).toBe(`${expectedPrefix}:dashboard:statistics`)
     expect(runtimeContract?.redisKeyPrefix).toBe(expectedPrefix)
+  })
+
+  it('scopes deterministic Stage 4 and Stage 5 Playwright artifacts to the unique visual output candidate', async () => {
+    process.env.VISUAL_OUTPUT_NAME = 'local-remediation-20260908-ui'
+    vi.resetModules()
+
+    const [{ default: stage4Config }, { default: stage5Config }] = await Promise.all([
+      import('../../playwright.stage4-repair-notice.config'),
+      import('../../playwright.stage5-governance.config'),
+    ])
+    const stage4Server = Array.isArray(stage4Config.webServer)
+      ? stage4Config.webServer[0]
+      : stage4Config.webServer
+    const stage5Server = Array.isArray(stage5Config.webServer)
+      ? stage5Config.webServer[0]
+      : stage5Config.webServer
+
+    expect(stage4Config.outputDir).toBe('test-results/local-remediation-20260908-ui/playwright')
+    expect(stage5Config.outputDir).toBe('test-results/local-remediation-20260908-ui/playwright')
+    expect(stage4Server?.env?.VITE_E2E_DISABLE_HMR).toBe('true')
+    expect(stage5Server?.env?.VITE_E2E_DISABLE_HMR).toBe('true')
+  })
+
+  it('anchors Stage 5 proposal expiry on an explicit bounded fixture clock', async () => {
+    const {
+      stage5AsOf,
+      stage5Proposals,
+      stage5ReferenceInstant,
+    } = await import('../../e2e/stage5-governance-fixtures')
+    const referenceTime = Date.parse(stage5ReferenceInstant)
+    const activeExpiryTimes = stage5Proposals
+      .filter(({ state }) => state !== 'expired')
+      .map(({ expiresAt }) => Date.parse(expiresAt))
+    const expiredExpiryTimes = stage5Proposals
+      .filter(({ state }) => state === 'expired')
+      .map(({ expiresAt }) => Date.parse(expiresAt))
+
+    expect(stage5AsOf).toBe(stage5ReferenceInstant)
+    expect(Number.isFinite(referenceTime)).toBe(true)
+    expect(activeExpiryTimes.every((expiresAt) => expiresAt > referenceTime)).toBe(true)
+    expect(expiredExpiryTimes.every((expiresAt) => expiresAt <= referenceTime)).toBe(true)
+    expect(Math.max(...activeExpiryTimes) - referenceTime).toBeLessThanOrEqual(14 * 24 * 60 * 60 * 1000)
+    expect(stage5Proposals.every(({ expiresAt }) => expiresAt.endsWith('+08:00'))).toBe(true)
   })
 
   it('rejects a repair-notice Stage 4 Redis prefix shared across visual output candidates', async () => {

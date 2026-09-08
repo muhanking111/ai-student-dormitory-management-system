@@ -8,6 +8,8 @@ import java.util.Set;
 /**
  * Proposal/execution 事件首期投递到内部观测投影。业务写已经在人工请求事务完成，
  * 该消费者只确认可重放事件，绝不再次调用业务 Service。
+ * SUCCEEDED 只代表内部 receipt，不代表通知、缓存刷新、分析或评测数据入库已完成。
+ * 这些外部消费者当前不接入；新增时必须使用独立幂等回执，不能复用本 receipt 冒充交付。
  */
 @Component
 public class ControlPlaneOutboxHandler implements AiOutboxEventHandler {

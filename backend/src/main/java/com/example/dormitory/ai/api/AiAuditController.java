@@ -34,9 +34,10 @@ public class AiAuditController {
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) java.time.Instant to,
             @RequestParam(required = false) String capability,
             @RequestParam(required = false) String state,
-            @RequestParam(required = false) String provider) {
+            @RequestParam(required = false) String provider,
+            @RequestParam(required = false) String costStatus) {
         var filter = new com.example.dormitory.ai.application.run.AiRunRecords.AuditRunFilter(
-                from, to, capability, state, provider);
+                from, to, capability, state, provider, costStatus);
         return ResponseEntity.ok().headers(AiApiHeaders.privateNoStore())
                 .body(ApiResponse.ok(service.auditRuns(filter, page, pageSize)));
     }

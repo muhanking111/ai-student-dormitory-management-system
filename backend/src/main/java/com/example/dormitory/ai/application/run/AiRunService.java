@@ -596,6 +596,11 @@ public class AiRunService {
                 String safeOutput = crypto.redact(active.directResponse(), "knowledge-assistant-output")
                         .redactedText();
                 if (!active.citations().isEmpty()) {
+                    // 检索/脱敏之后再次检查会话；SSE broker 在网络发送前还会逐事件重验。
+                    if (!actorResolver.stillValid(active.actor(), "ai:assistant:use")) {
+                        safeFail(runId, "AI_SESSION_REVOKED", false);
+                        return;
+                    }
                     publish(store.completeRunWithFinalDelta(runId, safeOutput,
                             new ModelUsage(0, 0, ModelUsage.Source.ESTIMATED),
                             "deterministic", "knowledge-grounding-policy-v1", false,

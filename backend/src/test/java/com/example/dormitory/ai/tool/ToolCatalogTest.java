@@ -33,12 +33,24 @@ class ToolCatalogTest {
 
     @Test
     void catalogContainsExactlySevenVersionedPlanTools() {
-        assertEquals("v1", catalog.version());
+        assertEquals("v2", catalog.version());
         assertEquals(7, catalog.definitions().size());
         assertEquals(PLANNED_TOOL_IDS, catalog.definitions().keySet());
         assertEquals(2, catalog.definitions().values().stream()
                 .filter(definition -> definition.kind() == ToolDefinition.Kind.PROPOSAL)
                 .count());
+    }
+
+    @Test
+    void catalogSeparatesExecutableInternalAndReservedToolsWithoutProviderAdvertising() {
+        assertEquals(Set.of(
+                        "knowledge.search.v1", "dashboard.query_metric.v1", "repair.get_context.v1"),
+                catalog.runtimeExecutableIds());
+        assertEquals(Set.of("repair.propose_assignment.v1", "notice.propose_draft.v1"),
+                catalog.internalProposalIds());
+        assertEquals(Set.of("dormitory.get_capacity_summary.v1", "notice.list_published.v1"),
+                catalog.reservedIds());
+        assertTrue(catalog.providerCallableIds().isEmpty());
     }
 
     @Test

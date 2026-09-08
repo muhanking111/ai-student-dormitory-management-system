@@ -28,6 +28,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 })
 class PersistentFakeRiskExplanationRunTest {
 
+    private final com.example.dormitory.ai.governance.StandardToolCatalogManifest standardCatalog =
+            new com.example.dormitory.ai.governance.StandardToolCatalogManifest(
+                    com.example.dormitory.ai.tool.ToolCatalog.standard(), new com.fasterxml.jackson.databind.ObjectMapper());
+
     @Autowired
     private RiskExplanationRunPort port;
 
@@ -43,9 +47,9 @@ class PersistentFakeRiskExplanationRunTest {
         jdbc.update("DELETE FROM ai_tool_catalog_version");
         jdbc.update("INSERT INTO ai_tool_catalog_version "
                         + "(version,manifest_text,manifest_hash,status,active_slot_key,activated_at,created_at,updated_at) "
-                        + "VALUES ('risk-fake-v1','{\"tools\":[]}',?,'ACTIVE','runtime',CURRENT_TIMESTAMP,"
+                        + "VALUES (?, ?, ?,'ACTIVE','runtime',CURRENT_TIMESTAMP,"
                         + "CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)",
-                "b".repeat(64));
+                standardCatalog.version(), standardCatalog.manifest(), standardCatalog.hash());
     }
 
     @Test

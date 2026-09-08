@@ -7,7 +7,14 @@ param(
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'demo-common.ps1')
 
+$demoLifecycleLock = Enter-DemoLifecycleLock
+try {
+if (Test-Path -LiteralPath (Get-DemoRuntimeRoot)) {
+    Initialize-DemoProtectedDirectory (Get-DemoRuntimeRoot)
+}
 $state = Read-DemoState
+Assert-DemoStateIdentity $state
+Assert-DemoComposeOwnership -State $state -Inventory (Get-DemoComposeResourceInventory)
 $expectedToken = Get-DemoResetToken $state
 if ($ConfirmTarget -ne $expectedToken) {
     Write-Output "拒绝重置。确认令牌必须精确等于：$expectedToken"
@@ -69,3 +76,6 @@ Write-DemoState $state
     deletedRedisKeys = $state.resetDeletedRedisKeys
     next = "scripts/demo-start.ps1 -Mode $($profile.mode) -NoBrowser"
 } | ConvertTo-Json -Depth 6
+} finally {
+    Exit-DemoLifecycleLock $demoLifecycleLock
+}

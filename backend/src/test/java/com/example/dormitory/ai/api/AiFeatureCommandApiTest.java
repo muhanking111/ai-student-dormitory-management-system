@@ -40,6 +40,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 })
 class AiFeatureCommandApiTest {
 
+    private final com.example.dormitory.ai.governance.StandardToolCatalogManifest standardCatalog =
+            new com.example.dormitory.ai.governance.StandardToolCatalogManifest(
+                    com.example.dormitory.ai.tool.ToolCatalog.standard(), new com.fasterxml.jackson.databind.ObjectMapper());
+
     @Autowired MockMvc mockMvc;
     @Autowired ObjectMapper objectMapper;
     @Autowired JdbcTemplate jdbcTemplate;
@@ -55,8 +59,8 @@ class AiFeatureCommandApiTest {
                 + "activated_at=CURRENT_TIMESTAMP WHERE prompt_key='dashboard.system' AND version='v1'");
         jdbcTemplate.update("INSERT INTO ai_tool_catalog_version "
                         + "(version, manifest_text, manifest_hash, status, active_slot_key, activated_at, created_at, updated_at) "
-                        + "VALUES ('v1', '{\"tools\":[]}', ?, 'ACTIVE', 'runtime', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
-                "a".repeat(64));
+                        + "VALUES (?, ?, ?, 'ACTIVE', 'runtime', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+                standardCatalog.version(), standardCatalog.manifest(), standardCatalog.hash());
     }
 
     @Test

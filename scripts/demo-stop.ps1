@@ -4,7 +4,14 @@ param([switch]$KeepInfrastructure)
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'demo-common.ps1')
 
+$demoLifecycleLock = Enter-DemoLifecycleLock
+try {
+if (Test-Path -LiteralPath (Get-DemoRuntimeRoot)) {
+    Initialize-DemoProtectedDirectory (Get-DemoRuntimeRoot)
+}
 $state = Read-DemoState
+Assert-DemoStateIdentity $state
+Assert-DemoComposeOwnership -State $state -Inventory (Get-DemoComposeResourceInventory)
 $results = [ordered]@{}
 foreach ($name in @('frontend', 'backend')) {
     $entry = $state.processes.$name
@@ -32,3 +39,6 @@ Set-DemoStateProperty -State $state -Name 'stoppedAt' -Value (Get-Date).ToString
 Set-DemoStateProperty -State $state -Name 'stopResults' -Value $results
 Write-DemoState $state
 [ordered]@{ status = 'PASS'; results = $results; state = '.demo/state.json' } | ConvertTo-Json -Depth 6
+} finally {
+    Exit-DemoLifecycleLock $demoLifecycleLock
+}

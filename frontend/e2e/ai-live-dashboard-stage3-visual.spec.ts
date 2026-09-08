@@ -181,6 +181,12 @@ test('阶段 3 Dashboard 真实 HttpAiClient 桌面/移动视觉证据', async (
       await loginThroughUi(page)
       runtimeObservations.push(await observeBackendRuntime(page, viewport.name))
       await ensureDashboardReady(page)
+      const command = page.getByRole('search', { name: '自然语言查询' })
+      await command.getByRole('textbox', { name: '自然语言查询' }).fill('本周待维修工单有多少？')
+      await command.getByRole('button', { name: /查询/ }).click()
+      await expect(page.locator('[data-dashboard-section="brief"]')).toHaveAttribute('aria-busy', 'false', { timeout: 60_000 })
+      await expect(command.getByRole('button', { name: /查询/ })).toBeEnabled()
+      await ensureDashboardReady(page)
       const geometry = await page.evaluate(() => {
         const documentTop = (selector: string) => {
           const bounds = document.querySelector<HTMLElement>(selector)?.getBoundingClientRect()
@@ -193,8 +199,16 @@ test('阶段 3 Dashboard 真实 HttpAiClient 桌面/移动视觉证据', async (
           pendingTop: documentTop('.pending-panel__heading'),
           sparseStateVisible: Boolean(document.querySelector<HTMLElement>('.trend-sparse-state')?.offsetParent),
           degradedStateVisible: Boolean(document.querySelector<HTMLElement>('.ai-brief__warning')?.offsetParent),
+          sections: ['.dashboard-command', '.stats-grid', '.metric-grid', '.ai-brief', '.ai-brief__warning', '.risk-panel', '.trend-panel', '.trend-meta', '.trend-sparse-state'].map((selector) => {
+            const element = document.querySelector<HTMLElement>(selector)
+            const bounds = element?.getBoundingClientRect()
+            return { selector, top: bounds?.top, height: bounds?.height, text: element?.innerText }
+          }),
         }
       })
+      // 失败也保留同次几何与截图，便于定位真实内容态，而非仅剩一个越界数字。
+      writeFileSync(resolve(liveDirectory, `${viewport.name}-geometry.json`), JSON.stringify(geometry, null, 2))
+      await page.screenshot({ path: resolve(liveDirectory, `${viewport.name}-diagnostic.png`), animations: 'disabled', caret: 'hide' })
       expect(geometry.documentWidth).toBeLessThanOrEqual(geometry.viewportWidth + 1)
       if (viewport.name === '390x844') {
         expect(geometry.pendingTop, 'Dashboard 待办标题未在 824px 内进入连续信息流')

@@ -5,7 +5,36 @@
 > 适用范围：AI 智能宿舍阶段 0–6 及其生产发布门
 > 视觉合同：`design/ai-prototypes/` 中 9 张最终 PNG
 
-## 1. 结论与状态定义
+## 2026-09-08 必要修复验证（本地交付通过）
+
+本轮按用户授权收口本地交付必需项。普通测试与真实 IT 使用独立报告目录，JaCoCo 禁止跨运行 append，避免旧报告混入。过程证据位于 `.planning/20260908-140726-必要缺口修复与本地交付收口/`，以下简称“本轮证据目录”。下方历史 RC2 数字不是本轮结果。
+
+| 当前验证 | 同次结果 | 证据与边界 |
+| --- | --- | --- |
+| 后端最终核心验证 | 164 reports / 936 tests；0 failure/error/skipped；`verify` exit 0 | `full-backend-final/`，命令 `mvn -o -q -P ai-coverage -Dsurefire.reportsDirectory=<本轮证据目录>/full-backend-final verify` |
+| 后端 AI 覆盖率 | line 12940/13822 = 93.62%；branch 6855/8529 = 80.37% | `jacoco-final.xml`；均满足原 80% 门，未降低阈值 |
+| 前端最终核心验证 | 46 files / 523 tests PASS；typecheck/build PASS | `frontend-final-c.json`；覆盖新增初始化与Dashboard刷新等待回归 |
+| 前端覆盖率 | statements 2271/2586 = 87.81%；branches 1662/2073 = 80.17%；functions 447/493 = 90.66%；lines 2016/2198 = 91.71% | 当前 coverage；未降低阈值 |
+| ESLint | 0 errors / 2706 warnings | `eslint-final-c.json`；保留原风格债，本轮不进行全仓格式化 |
+| 供应链 | Maven runtime 120 组件、OSV 0 findings；npm audit 0 vulnerabilities | `osv-runtime-current.json`、`npm-audit-final.json`；Tomcat 10.1.59、Log4j 2.25.5；仅表示本次已知公告查询结果 |
+| 常规浏览器 | desktop/mobile 72/72 PASS | `frontend/test-results/necessary-default-20260908-b/run`；使用已安装 Edge，a 轮缺浏览器缓存的失败不混计 |
+| 最终正式视觉 | 22 routes × 6 viewports = 132 基础截图；全套1/1 PASS（5.3分钟） | `frontend/test-results/necessary-visual-20260908-d/manifest.json`；总159 PNG，19项assistant截图记录、9个原型捕获绑定（部分复用基础截图，不直接相加）；API/请求/console/page/runtime错误、代码/原型漂移、浏览器观测业务写均0。准备fixture单独写入专用测试库，不代表测试零数据库写入 |
+| Stage 4/5 fixture | 8/8 + 9/9 PASS，56 + 62 PNG | `remediation-stage4-20260908-full-b/fixtures/manifest.json` 与 `remediation-stage5-20260908-full-b/fixtures/manifest.json`；固定时钟，未放宽几何断言 |
+| AI HTTP live | 1/1 PASS | `frontend/test-results/necessary-live-20260908-b/run`；真实 MySQL/Redis/HTTP/SSE，Fake provider、业务写关闭；包括标准目录真实 step-up/CAS 激活 |
+| 维修/公告 HTTP live | 1/1 PASS；业务写、审批写、未预期请求失败均为 0 | `frontend/test-results/necessary-stage4-20260908-b-settled/stage4-repair-notice/manifest.json`；首次专用库缺维修人员 fixture，补齐后发现跳页取消审计读取，改为等待 requestfinished；旧失败保留 |
+| 最终真实 MySQL/Redis IT | 3 reports / 8 tests PASS，0 failure/error/skipped | `real-it-final/`；专用 `student_dormitory_real_it_20260908_b_e2e`、3307/6380、Redis DB 11；独立于核心936项，不混为旧920项 |
+| 最终授权并发 | 3/3 RED 后 3/3 GREEN；连同原 store 回归 21/21 PASS | `final-auth-tests/`；H2 双线程锁竞争，不能冒称真实 MySQL 专项竞态证明 |
+| Demo 脚本合同 | PowerShell 7 与 Windows PowerShell 5.1 均 PASS | 各引擎执行 lifecycle 33、recovery 9、keyring 16、原脚本19断言；保留 PID 复用拒绝、失败原子替换和父目录 ACL 回归 |
+| 双模式 Demo | readonly / approval 启动、health、停止 PASS | `demo-readonly-final-health.json`、`demo-approval-final-health.json`；父目录ACL最终版本再启动readonly并得到`demo-readonly-bound-health.json`，登录/业务读取/四项AI控制READY；交付前自有前后端及3307/6380容器已停止，本轮无reset或删除数据库 |
+| 当前 JAR | 58,090,412 bytes；SHA-256 `6F1EC4699826616C1C3FCF06647B63BAC9A45398DC36134961D34E8AE05F89B4` | `backend/target/student-dormitory-management-system-0.1.0.jar`，最终 verify 产物；不是已发布 RC2 JAR |
+
+正式 d 轮已通过，manifest SHA-256 为 `771BED9AEF637B3B9D5F3DFD5155FF7204EA5901B9AFA36AFD4B81F18F3385BA`。c 轮 `pendingTop=830.59375 > 824` 是测试误测“正在刷新、上一版结果”的中间态：刷新不会挂 `--loading` 类。两套测试改为等待 `aria-busy=false` 和查询按钮恢复；最终手机 `pendingTop=810.59375`、文档高1235、无横向溢出，稀疏/降级说明仍可见。没有改 DashboardView 或 CSS，也未放宽原几何断言。诊断图和每区几何在断言前落盘，新增 `playwright.dashboard-clock.config.ts` 复用正式后端/时钟配置做双视口快检。
+
+最终源码绑定见本轮证据目录 `final-source-bindings.json`：基线 `main@98e57b1be34fd97039864c3cb23e839a4a61dffd` 加61项代码/测试/脚本文件变更，路径与SHA-256清单聚合为 `D2C4EF381E1693A345D6CE2BABB45A27BB1DDA0D34C1677B7F278DA713B69376`。前端dist为74文件、2,136,621 bytes，路径/哈希聚合 `EC51D5A7F4FAE63DB84F1C57579DC152F4BC5BAB9462B9310AFFD56A70118296`。上述哈希记录修复验收时的工作区及本地制品，后续源码提交以 Git 历史为准。原始测试报告、截图和制品保留在本地忽略目录，未随源码上传；本次 Git 同步不创建新 tag/Release，也不放行生产部署。
+
+复核边界：独立只读复核已关闭最终授权、工具目录钉扎及 OpenAPI 描述三组问题，未发现这三组的新 P0/P1；专用 `security-reviewer` 因账户不支持其固定模型未运行，不能将替代复核表述为专项安全认证。非阻断项包括并发测试的短等待稳定性、数据库遭直接篡改时目录 UI 诊断不够精确（运行时仍拒绝）。真实供应商、生产基础设施、人工签字和发布授权继续 `NOT RUN / NOT APPROVED / UNSIGNED`，不影响已明确限定的本地演示交付范围。
+
+## 1. 历史结论与状态定义
 
 当前结论必须按以下三个状态理解，不能混写：
 
@@ -13,15 +42,15 @@
 | --- | --- | --- |
 | 阶段 0–6 后端/数据/安全能力 | `ENGINEERING COMPLETE` | 控制面、数据合同、安全边界和既有后端证据仍有效；发生相关源码变化后必须重跑 |
 | 9 图 UI 高保真落实与前端全量验收 | `COMPLETED` | 2026-08-09 用户反馈已关闭 Dashboard 三项具体差异；当前工程门、治理回归、独立 UI/安全增量、全量 Stage 6 候选链均通过，用户已确认“看现在ui差不多还可以” |
-| Route A RC 封版与公开发布 | `COMPLETED` | Stage 0-5.5 已完成；Apache-2.0 公开候选树的全量工程门、双模式演示、clean clone、新终端、桌面/移动与异常态验收均 PASS；`rc-20260811.1` 因 CodeQL 告警失效，[GitHub public 仓库](https://github.com/muhanking111/ai-student-dormitory-management-system)、`main`、tag `rc-20260811.2` 和 Release 绑定同一最终提交 |
+| Route A RC 封版与公开发布 | `COMPLETED` | Stage 0-5.5 已完成；Apache-2.0 公开候选树的全量工程门、双模式演示、clean clone、新终端、桌面/移动与异常态验收均 PASS；`rc-20260811.1` 因 CodeQL 告警失效，[GitHub public 仓库](https://github.com/muhanking111/ai-student-dormitory-management-system)、`main`、tag `rc-20260811.2` 和 Release 在当时绑定同一最终提交；后续 main 已前进，不保证继续相同 |
 | 生产外部依赖与生产演练 | `NOT RUN` | 缺少生产 KMS、外部向量/对象服务、外部审计锚、正式供应商条款及生产灾备等真实环境证据，不能视为通过 |
 | 阶段 7 预测模型与学生端 | `OUT OF SCOPE` | 本轮明确不实施，不是失败，也不是待补测项 |
 
-因此：**阶段 0–6 后端控制能力的既有工程结论继续有效；2026-08-09 Dashboard 圈注整改的当前源码工程门、Stage 5 治理回归、两份独立 UI 增量复核、专项安全增量复核和全量 Stage 6 候选链均已通过，全部已知 P0-P3 为零；用户已完成肉眼验收，Stage 6 与 UI 高保真复验完成。** 本轮仍未放行生产环境，任何真实供应商、外部数据服务或生产写执行启用仍必须先关闭本文件列出的全部 `NOT RUN` 发布门。
+上述阶段完成、安全复核和用户肉眼确认仅描述 2026-08-09 至 08-11 历史快照，不是对后续代码的自动认可。2026-09-08 当前修复与验收以本文顶部同日记录为准；旧测试数字、旧 JAR 与旧截图不得替代新候选。生产环境从未因此放行，真实供应商、外部数据服务或生产写执行仍须关闭全部适用 `NOT RUN` 发布门。
 
 本文件取代旧的分散评测、框架 Spike 和阶段验收文档。其他文档如与本文件的测试数字、状态或哈希冲突，以本文件及其指向的当前产物为准。
 
-## 2. 当前验收快照
+## 2. 历史 RC2 验收快照（2026-08-11）
 
 ### 2.1 后端、协议与产物
 
@@ -96,7 +125,7 @@
 - 新证据和差异矩阵位于 `.planning/20260727-ui-prototype-texture-reassessment/artifacts/`。完成新实现前，旧 `f` 批次仅为结构差异起点。
 - Stage 1 已以最新 `o` 批次关闭共享壳层、设计 Token 和状态画廊问题；Stage 2 已以最新 `d` 批次关闭 Assistant 桌面/移动；Stage 3 已以最新 `x/x-live` 批次关闭 Dashboard 桌面/移动；Stage 4 已以最新 `k/k-live` 批次关闭维修分诊与公告起草；Stage 5 已以最新 `ak` fixture 和 `ah-live` 安全链关闭风险、审批与审计。Stage 6 最终 `ew/ex/ey/ez/fa/fb/fc` 仅保留为历史基线；当前 `20260809-dashboard-feedback-l` 已关闭自动化、制品、可访问性、同视口比较、完整性、Assessment A/B、专项安全工程门和用户肉眼验收。
 
-### 2.3 当前证据文件
+### 2.3 历史证据文件
 
 - Route A Stage 5.5 当前树全门：`.planning/20260811-release-candidate-delivery/artifacts/rc-20260811.2/` 的日志、机器可读摘要与最终制品哈希；`.planning/` 只保存本地证据，不进入公开仓库或 Release 附件。
 - 公开范围审计：`.planning/20260811-release-candidate-delivery/artifacts/stage55-public-audit.json`、`stage55-dependency-license-audit.json`、`stage55-markdown-link-audit.json` 和净化历史后的公开树索引。
@@ -120,7 +149,7 @@
 - 供应链：`backend/target/osv-runtime-summary.json`、`backend/target/osv-runtime-querybatch-response.json`
 - 候选产物：`backend/target/student-dormitory-management-system-0.1.0.jar`
 
-当前仓库已建立可用 Git 身份；`rc-20260811.1` 因 CodeQL 告警已失效，Route A 最终公开提交由不可移动 tag `rc-20260811.2`、GitHub Release target 和远程默认分支共同绑定。`.planning/` 中的详细运行证据不公开，公开材料只保留脱敏结论、命令范围和制品 SHA-256。
+当前仓库已建立可用 Git 身份；`rc-20260811.1` 因 CodeQL 告警已失效，Route A 最终公开提交由不可移动 tag `rc-20260811.2`与 GitHub Release target 绑定；远程默认分支已有后续提交。`.planning/` 中的详细运行证据不公开，公开材料只保留脱敏结论、命令范围和制品 SHA-256。
 
 ## 3. 阶段 0–6 验收矩阵
 
@@ -380,7 +409,7 @@ Get-FileHash -Algorithm SHA256 .\test-results\visual\manifest.json
 
 发布结论只能绑定本次实际运行的候选、配置、数据集和环境，不得沿用旧测试数字、旧截图、旧哈希或其他环境的 `PASS`。
 
-## 11. 2026-08-09 Dashboard 圈注整改当前事实
+## 11. 2026-08-09 Dashboard 圈注整改历史事实
 
 2026-08-09 用户通过 Dashboard 圈注对比图明确指出三项视觉差异：四类风险图标必须按类别固定蓝/橙/绿/红，风险数量/等级同行右置且清晰，桌面待办恢复七列并在真实审批目标与权限满足时显示“查看建议 / 进入审批”。本轮只修改前端页面、相关合同/状态同步和 Stage 5 非 expired 测试夹具；未公开原始本机路径，未编辑、重生成或替换 9 张原型 PNG，未调用 Figma。
 
@@ -398,4 +427,4 @@ Get-FileHash -Algorithm SHA256 .\test-results\visual\manifest.json
 
 当前预览的代表性几何与语义证据：桌面 `1586x992` 的 7 个待办表头完整，2 条真实提案同时含两项操作且各为 `72x44px`；移动 `390x844` 的 `documentWidth=390`、`pendingTop=810.59375`、`documentHeight=1233`，品牌标记为 `A`，趋势两项图例边界不重叠；风险行类别 icon computed color 为 `#1769ea / #e96b00 / #079568 / #e5484d`，风险状态和等级为 `14px`。
 
-候选事实边界：本轮 `k`（登录代理到默认 `8080`）与 `k2`（Vite 未继承 `VITE_AI_ENABLED=true`）均为已保留的本地预览启动环境诊断，未用于通过结论；`l` 是修正 `VITE_BACKEND_PROXY_TARGET`、`VITE_AI_ENABLED`、`VITE_VISUAL_EVIDENCE_ENABLED` 后的新鲜通过候选。用户已完成肉眼确认，Stage 6 为 `COMPLETED`；真实供应商、生产写执行、部署、push 和发布继续 `NOT RUN / NOT APPROVED`。
+候选事实边界：本轮 `k`（登录代理到默认 `8080`）与 `k2`（Vite 未继承 `VITE_AI_ENABLED=true`）均为已保留的本地预览启动环境诊断，未用于通过结论；`l` 是修正 `VITE_BACKEND_PROXY_TARGET`、`VITE_AI_ENABLED`、`VITE_VISUAL_EVIDENCE_ENABLED` 后的新鲜通过候选。用户已完成肉眼确认，Stage 6 为 `COMPLETED`；真实供应商、生产写执行、生产部署/发布继续 `NOT RUN / NOT APPROVED`；Route A 历史 GitHub RC 已发布，后续远端写入仍需授权。

@@ -1277,7 +1277,10 @@ test(`真实服务 ${routes.length} 路由 × ${viewports.length} 视口生成�
               await expect(page.locator('.ai-brief--loading')).toHaveCount(0, { timeout: 60_000 })
               await command.getByRole('textbox', { name: '自然语言查询' }).fill('本周待维修工单有多少？')
               await command.getByRole('button', { name: /查询/ }).click()
-              await expect(page.locator('.ai-brief--loading')).toHaveCount(0, { timeout: 60_000 })
+              // 刷新保留上一版 summary，不会出现 --loading 类；必须等真实刷新结束。
+              await expect(page.locator('[data-dashboard-section="brief"]'))
+                .toHaveAttribute('aria-busy', 'false', { timeout: 60_000 })
+              await expect(command.getByRole('button', { name: /查询/ })).toBeEnabled()
               const brief = page.getByRole('article', { name: '今日 AI 运营简报' })
               await expect(brief).toBeVisible()
               await expect(brief).toContainText('口径', { timeout: 60_000 })

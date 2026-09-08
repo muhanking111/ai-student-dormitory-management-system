@@ -8,7 +8,7 @@
 - 不可移动 tag：`rc-20260811.2`
 - 公开 Release：[RC rc-20260811.2](https://github.com/muhanking111/ai-student-dormitory-management-system/releases/tag/rc-20260811.2)
 - 验证源码提交：`18030b80238a9aba030843d816952b908526b97c`
-- 最终默认分支、tag 与 Release target 绑定同一元数据提交；Release 不上传本地 JAR、dist、日志、测试报告、截图或 `.planning/` 原始证据。
+- 发布当时默认分支、tag 与 Release target 绑定同一元数据提交；后续 main 已前进，本文仅说明不可移动 RC2 历史，不覆盖 2026-09-08 本地修复；Release 不上传本地 JAR、dist、日志、测试报告、截图或 `.planning/` 原始证据。
 
 ## 相对 `.1` 的修复
 

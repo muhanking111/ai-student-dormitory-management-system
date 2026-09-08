@@ -12,6 +12,14 @@ const outputDirectory = resolve(process.cwd(), 'test-results', outputName, 'fixt
 const capturesDirectory = resolve(outputDirectory, 'captures')
 const screenshots: Array<Record<string, unknown>> = []
 const computedEvidence: Record<string, unknown> = {}
+const stage4ReferenceInstant = '2026-08-01T10:30:00+08:00'
+const millisecondsPerDay = 24 * 60 * 60 * 1000
+const asiaShanghaiOffsetMilliseconds = 8 * 60 * 60 * 1000
+const stage4InstantAtDayOffset = (days: number) => new Date(
+  Date.parse(stage4ReferenceInstant) + days * millisecondsPerDay + asiaShanghaiOffsetMilliseconds,
+).toISOString().replace(/Z$/, '+08:00')
+const stage4ExpiredProposalInstant = stage4InstantAtDayOffset(-1)
+const stage4ActiveProposalExpiryInstant = stage4InstantAtDayOffset(10)
 
 const viewports = [
   { name: '1920x1080', width: 1920, height: 1080 },
@@ -95,7 +103,7 @@ function repairResult(scenario: RepairScenario = 'success', repairId = 1): AiRep
     state: 'succeeded',
     proposalId: 'proposal-repair-001',
     proposalState: 'pending_approval',
-    proposalExpiresAt: '2099-08-01T10:30:00+08:00',
+    proposalExpiresAt: stage4ActiveProposalExpiryInstant,
   }
   if (scenario === 'low-confidence') result.evidence.confidence = 0.52
   if (scenario === 'no-candidate') {
@@ -113,7 +121,7 @@ function repairResult(scenario: RepairScenario = 'success', repairId = 1): AiRep
   if (scenario === 'stale') result.proposalState = 'stale'
   if (scenario === 'expired') {
     result.proposalState = 'expired'
-    result.proposalExpiresAt = '2000-01-01T00:00:00Z'
+    result.proposalExpiresAt = stage4ExpiredProposalInstant
   }
   return result
 }
@@ -144,7 +152,7 @@ function noticeResult(scenario: NoticeScenario = 'success'): AiNoticeDraftResult
     state: 'succeeded',
     proposalId: 'proposal-notice-001',
     proposalState: 'pending_approval',
-    proposalExpiresAt: '2099-08-01T10:30:00+08:00',
+    proposalExpiresAt: stage4ActiveProposalExpiryInstant,
   }
   if (scenario === 'no-source') {
     result.evidence = { basis: 'unverified', confidence: 0.61, asOf: '', grounded: false, citations: [] }
@@ -155,7 +163,7 @@ function noticeResult(scenario: NoticeScenario = 'success'): AiNoticeDraftResult
   if (scenario === 'stale') result.proposalState = 'stale'
   if (scenario === 'expired') {
     result.proposalState = 'expired'
-    result.proposalExpiresAt = '2000-01-01T00:00:00Z'
+    result.proposalExpiresAt = stage4ExpiredProposalInstant
   }
   return result
 }
@@ -205,6 +213,7 @@ async function createPage(browser: Browser, viewport: { width: number; height: n
     reducedMotion: 'reduce',
   })
   const page = await context.newPage()
+  await page.clock.setFixedTime(new Date(stage4ReferenceInstant))
   await page.addInitScript(() => {
     const original = Element.prototype.scrollIntoView
     Element.prototype.scrollIntoView = function scrollIntoView(options?: boolean | ScrollIntoViewOptions) {
@@ -613,9 +622,11 @@ async function expectNoticeDraftDensity(
 }
 
 async function openNotice(page: Page, waitForSnapshot = true) {
-  await page.goto('/notices/create')
-  await expect(page.getByRole('region', { name: '公告 AI 起草工作台' })).toBeVisible()
-  await expect(page.getByRole('dialog', { name: '公告 AI 起草' })).toBeVisible()
+  await page.goto('/notices/create', { waitUntil: 'domcontentloaded' })
+  await page.waitForURL((url) => url.pathname === '/notices/create')
+  const workbench = page.locator('.notice-create-page[role="region"][aria-label="公告 AI 起草工作台"]')
+  await workbench.waitFor({ state: 'visible' })
+  await expect(workbench.getByRole('dialog', { name: '公告 AI 起草' })).toBeVisible()
   if (waitForSnapshot) await expect(page.locator('.notice-diff-status')).not.toContainText('正在读取')
 }
 
@@ -933,6 +944,7 @@ test.afterAll(() => {
   writeFileSync(computedStylesPath, `${JSON.stringify(computedEvidence, null, 2)}\n`)
   writeFileSync(resolve(outputDirectory, 'manifest.json'), `${JSON.stringify({
     generatedAt: new Date().toISOString(),
+    fixtureReferenceInstant: stage4ReferenceInstant,
     fixtureMode: 'mockApi business HTTP fixture + typed deterministic AiClient injection through the real page and Pinia actions',
     productionWrites: false,
     visualFidelityDecision: 'NOT_ASSERTED',
@@ -976,7 +988,13 @@ test('维修成功态通过真实生成按钮进入可审批状态', async ({ br
   const { context, page, browserErrors } = await createPage(browser, { width: 1505, height: 1045 })
   try {
     await openRepair(page)
-    await injectAiClient(page, { repair: repairResult() })
+    const result = repairResult()
+    const referenceTime = Date.parse(stage4ReferenceInstant)
+    expect(await page.evaluate(() => Date.now())).toBe(referenceTime)
+    expect(Date.parse(result.proposalExpiresAt ?? '')).toBeGreaterThan(referenceTime)
+    expect(Date.parse(result.proposalExpiresAt ?? '') - referenceTime).toBeLessThanOrEqual(14 * millisecondsPerDay)
+    expect(result.proposalExpiresAt).toMatch(/\+08:00$/)
+    await injectAiClient(page, { repair: result })
     await page.getByRole('button', { name: '生成分诊建议' }).click()
     await expect(page.locator('[data-testid="repair-confidence"]')).toHaveText('92%')
     await expect(page.getByRole('button', { name: '查看审批提案' })).toBeEnabled()
@@ -999,7 +1017,13 @@ test('公告成功态通过真实生成按钮进入可审批状态', async ({ br
   const { context, page, browserErrors } = await createPage(browser, { width: 1505, height: 1045 })
   try {
     await openNotice(page)
-    await injectAiClient(page, { notice: noticeResult() })
+    const result = noticeResult()
+    const referenceTime = Date.parse(stage4ReferenceInstant)
+    expect(await page.evaluate(() => Date.now())).toBe(referenceTime)
+    expect(Date.parse(result.proposalExpiresAt ?? '')).toBeGreaterThan(referenceTime)
+    expect(Date.parse(result.proposalExpiresAt ?? '') - referenceTime).toBeLessThanOrEqual(14 * millisecondsPerDay)
+    expect(result.proposalExpiresAt).toMatch(/\+08:00$/)
+    await injectAiClient(page, { notice: result })
     await page.getByRole('textbox', { name: '公告要点' }).fill('本周五开展宿舍安全检查，请提前整理公共区域')
     await page.getByRole('button', { name: '生成 AI 草稿' }).click()
     await expect(page.getByRole('textbox', { name: '公告标题' })).toHaveValue('关于开展学生宿舍安全检查的通知')

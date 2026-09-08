@@ -105,7 +105,7 @@ public class StepUpAuthenticationService {
                     actionCode, resourcePublicId, requestHash);
             return AuthenticationOutcome.rateLimitedOutcome();
         }
-        if (!rbacService.verifyEnabledUserPassword(userId, password)) {
+        if (!rbacService.verifyEnabledUserPasswordForUpdate(userId, password)) {
             int updated = jdbcTemplate.update(
                     "UPDATE ai_step_up_failure_window SET failure_count=failure_count+1, "
                             + "version=version+1, updated_at=CURRENT_TIMESTAMP "

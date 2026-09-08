@@ -296,10 +296,14 @@ function observeNetwork(page: Page) {
   const apiResponses: ObservedResponse[] = []
   const failedApiResponses: ObservedResponse[] = []
   const requestFailures: RequestFailure[] = []
+  const pendingAuditRequests = new Set<Request>()
 
   page.on('request', (request: Request) => {
     const path = new URL(request.url()).pathname
     const observed = { method: request.method(), path }
+    if (request.method() === 'GET' && /^\/api\/ai\/audit\/runs\/[^/]+$/.test(path)) {
+      pendingAuditRequests.add(request)
+    }
     if (path.startsWith('/api/ai/')) aiRequests.push(observed)
     if (path.startsWith('/api/')
       && unsafeMethods.has(request.method())
@@ -317,6 +321,7 @@ function observeNetwork(page: Page) {
     if (response.status() >= 400) failedApiResponses.push(observed)
   })
   page.on('requestfailed', (request) => {
+    pendingAuditRequests.delete(request)
     const path = new URL(request.url()).pathname
     if (!path.startsWith('/api/')) return
     requestFailures.push({
@@ -325,8 +330,9 @@ function observeNetwork(page: Page) {
       errorText: sanitizeDiagnostic(request.failure()?.errorText ?? 'unknown'),
     })
   })
+  page.on('requestfinished', (request) => pendingAuditRequests.delete(request))
 
-  return { aiRequests, businessWrites, apiResponses, failedApiResponses, requestFailures }
+  return { aiRequests, businessWrites, apiResponses, failedApiResponses, requestFailures, pendingAuditRequests }
 }
 
 async function acceptedRun(response: ReadableResponse, label: string) {
@@ -589,6 +595,13 @@ test('Stage 4 真实 HttpAiClient 覆盖维修分诊与公告起草，且不绕�
       repairProposal!.proposedValue === `建议维修负责人：维修人员 #${repairer.id}`
     )), '维修建议人员必须来自只读查询得到的已启用 REPAIRER 脱敏标识').toBe(true)
     await expect(page).toHaveURL(/\/ai\/approvals$/)
+
+    // 等待审批侧栏真正读取完整运行审计，再硬导航；不能由测试主动取消仍在途的 GET。
+    const repairAuditPath = `/api/ai/audit/runs/${repairAccepted.runId}`
+    await expect.poll(() => observed.aiRequests.some((request) => request.path === repairAuditPath))
+      .toBe(true)
+    await expect.poll(() => observed.pendingAuditRequests.size, { message: '审批运行审计仍在读取' }).toBe(0)
+    await expect(page.getByTestId('approval-runtime-rail')).toContainText('SUCCEEDED')
 
     await page.goto('/notices/create')
     const draftingRegion = page.getByRole('region', { name: '公告 AI 起草工作台' })

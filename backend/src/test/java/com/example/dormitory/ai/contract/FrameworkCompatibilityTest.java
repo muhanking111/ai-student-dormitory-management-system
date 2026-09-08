@@ -27,6 +27,12 @@ class FrameworkCompatibilityTest {
     }
 
     @Test
+    void servletAndLoggingRuntimeIncludeTheApprovedSecurityFixes() throws Exception {
+        assertEquals("10.1.59.0", org.apache.catalina.util.ServerInfo.getServerNumber());
+        assertEquals("2.25.5", mavenVersion("org.apache.logging.log4j", "log4j-api"));
+    }
+
+    @Test
     void springAi118ExposesCandidateChatToolSchemaUsageAndObservationSurfaces() throws Exception {
         assertEquals("1.1.8", mavenVersion("org.springframework.ai", "spring-ai-client-chat"));
         assertTrue(Arrays.stream(ChatClient.class.getMethods()).anyMatch(method -> method.getName().equals("prompt")));

@@ -30,7 +30,7 @@ PNG 中的日期、模型别名、ID、hash、数字和示例文案只表达信�
 
 ## 当前状态
 
-截至 2026-08-11：
+2026-09-08 正在完成必要缺口修复，当前结果以 `ai-verification.md` 的同日章节为准。以下 2026-08-11 记录仅是历史基线：
 
 - 非 AI 业务基线、AI 阶段 0-6 后端/数据/安全实现和 9 图 UI 高保真整改与复验：`COMPLETED`。2026-08-09 用户已确认“看现在ui差不多还可以”；当前候选、工程门、独立 UI/安全复核和用户肉眼验收均已关闭。更早的 `bm/bn/bo` 与 `ew/ex/ey/ez/fa/fb/fc` 只保留为历史基线。
 - 前端：18 个原业务路由 + 4 个 AI 路由，共 22 个受保护路由。
@@ -41,9 +41,13 @@ PNG 中的日期、模型别名、ID、hash、数字和示例文案只表达信�
 - 当前活动 UI 纠偏计划与逐图差异矩阵位于 [`.planning/20260727-ui-prototype-texture-reassessment/`](../.planning/20260727-ui-prototype-texture-reassessment/task_plan.md)。
 - 生产 KMS、外部向量/对象/扫描、外部审计锚、正式供应商数据条款、生产 TLS/备份/灾备仍为 `NOT RUN / NOT APPROVED`。
 - 阶段 7 预测模型和学生端为 `OUT OF SCOPE`。
-- [本地封版、GitHub 公开发布与可选预发布计划](./release-candidate-delivery-plan.md) 已于 2026-08-11 进入 `IN_PROGRESS`：Stage 0 已完成，Stage 1 正在建立新的本地版本身份；默认执行 Route A，在全部本地和公开检查通过后直接创建并推送公开仓库 `muhanking111/ai-student-dormitory-management-system`，真实预发布 Route B 仍需另行决策和授权。
+- [本地封版、GitHub 公开发布与可选预发布计划](./release-candidate-delivery-plan.md) 的 Route A 已于 2026-08-11 发布历史 RC2。后续 main 提交合法独立前进，不能继续声称 main 与不可移动 tag/Release 相同。本轮本地修复不新建 Release；生产 Route B 未批准。
 
 精确测试计数、覆盖率、制品哈希和视觉清单哈希只在 [AI 验证与验收](./ai-verification.md) 维护。其他文档只说明稳定结构与边界并链接到该证据，避免再次产生多套验收口径。
+
+## 当前收口范围
+
+保留现有管理业务、知识助手、固定指标、维修/公告建议和人工审批。当前不实现自动通知/分析订阅、反馈自动入库、楼栋维度扩展和通用多轮 Agent；目录预留工具、未使用 SSE 扩展事件不作为已实现能力。原始审计记录保留在本地 `.planning/`，本次结果以当前数据合同和验证记录为准。
 
 ## 固定范围
 

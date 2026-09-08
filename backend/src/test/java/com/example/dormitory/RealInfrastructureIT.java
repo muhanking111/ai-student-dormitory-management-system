@@ -466,6 +466,12 @@ class RealInfrastructureIT {
         @Override
         public void initialize(ConfigurableApplicationContext applicationContext) {
             Map<String, String> values = readRootEnv();
+            for (String key : List.of("DB_URL", "DB_USERNAME", "DB_PASSWORD", "REDIS_HOST", "REDIS_PORT",
+                    "REDIS_DATABASE", "REDIS_USERNAME", "REDIS_PASSWORD", "BOOTSTRAP_ADMIN_USERNAME", "BOOTSTRAP_ADMIN_PASSWORD")) {
+                String override = System.getenv("REAL_IT_" + key);
+                if (override != null) values.put(key, override);
+            }
+            requireDedicatedTargets(values);
             List<String> missing = REQUIRED_KEYS.stream().filter(key -> !values.containsKey(key)).toList();
             if (!missing.isEmpty()) {
                 throw new IllegalStateException("根 .env 缺少 RealInfrastructureIT 必需键: " + missing);
@@ -491,6 +497,23 @@ class RealInfrastructureIT {
                 throw new IllegalStateException("RealInfrastructureIT 根 .env 尚未初始化");
             }
             return rootEnvironment;
+        }
+
+        static void requireDedicatedTargets(Map<String, String> values) {
+            String database = values.getOrDefault("DB_URL", "");
+            if (!database.matches("^jdbc:mysql://(?:127\\.0\\.0\\.1|localhost|\\[::1\\])(?::[0-9]+)?/[A-Za-z0-9_]+_e2e(?:\\?.*)?$")) {
+                throw new IllegalStateException("Real IT 必须使用 loopback 专用 *_e2e 数据库；可通过 REAL_IT_DB_URL 显式设置。");
+            }
+            if (!Set.of("127.0.0.1", "localhost", "::1").contains(values.get("REDIS_HOST"))) {
+                throw new IllegalStateException("Real IT 必须使用 loopback Redis。");
+            }
+            try {
+                int index = Integer.parseInt(values.getOrDefault("REDIS_DATABASE", "0"));
+                int port = Integer.parseInt(values.getOrDefault("REDIS_PORT", "0"));
+                if (index < 1 || index > 15 || port < 1 || port > 65535) throw new NumberFormatException();
+            } catch (NumberFormatException failure) {
+                throw new IllegalStateException("Real IT 必须使用 Redis DB 1-15 与有效端口。", failure);
+            }
         }
 
         private static Map<String, String> readRootEnv() {

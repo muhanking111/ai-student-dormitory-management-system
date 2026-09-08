@@ -135,6 +135,25 @@ class RbacAssignmentLockContractTest {
 
     @Test
     @SuppressWarnings({"unchecked", "rawtypes"})
+    void stepUpPasswordVerificationLocksTheAccountRowInTheCallingTransaction() {
+        UserAccountMapper users = mock(UserAccountMapper.class);
+        PasswordEncoder passwords = mock(PasswordEncoder.class);
+        when(users.selectOne(any())).thenReturn(
+                new UserAccount(7L, "admin", "stored-hash", "管理员", "ADMIN", true));
+        when(passwords.matches("current-password", "stored-hash")).thenReturn(true);
+        RbacService service = new RbacService(users, mock(RoleMapper.class), mock(PermissionMapper.class),
+                mock(UserRoleMapper.class), mock(RolePermissionMapper.class), passwords,
+                mock(StepUpGrantRevocationPort.class));
+
+        assertTrue(service.verifyEnabledUserPasswordForUpdate(7L, "current-password"));
+
+        ArgumentCaptor<Wrapper<UserAccount>> userLock = ArgumentCaptor.forClass(Wrapper.class);
+        verify(users).selectOne(userLock.capture());
+        assertTrue(userLock.getValue().getSqlSegment().toUpperCase().contains("FOR UPDATE"));
+    }
+
+    @Test
+    @SuppressWarnings({"unchecked", "rawtypes"})
     void rolePermissionMutationLocksRoleBeforeReplacingPermissionFacts() {
         UserAccountMapper users = mock(UserAccountMapper.class);
         RoleMapper roles = mock(RoleMapper.class);

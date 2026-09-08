@@ -10,7 +10,14 @@ import java.util.Set;
 
 public final class ToolCatalog {
 
-    private static final String VERSION = "v1";
+    /** v2 adds enforceable runtime modes and closed context shapes; v1 rows remain immutable history. */
+    private static final String VERSION = "v2";
+    private static final Set<String> RUNTIME_EXECUTABLE_IDS = Set.of(
+            "knowledge.search.v1", "dashboard.query_metric.v1", "repair.get_context.v1");
+    private static final Set<String> INTERNAL_PROPOSAL_IDS = Set.of(
+            "repair.propose_assignment.v1", "notice.propose_draft.v1");
+    private static final Set<String> RESERVED_IDS = Set.of(
+            "dormitory.get_capacity_summary.v1", "notice.list_published.v1");
 
     private final Map<String, ToolDefinition> definitions;
 
@@ -29,7 +36,7 @@ public final class ToolCatalog {
                 ToolDefinition.DataClassification.L2));
         register(tools, read(
                 "dashboard.query_metric.v1",
-                "通过版本化指标目录执行固定聚合查询",
+                "兼容 ID：读取当前授权 Dashboard 的固定统计卡上下文，不接受动态指标",
                 DASHBOARD_QUERY_INPUT_SCHEMA,
                 DASHBOARD_QUERY_OUTPUT_SCHEMA,
                 Set.of("ai:dashboard:query"),
@@ -42,28 +49,28 @@ public final class ToolCatalog {
                 Set.of("ai:repair:triage", "repair:read"),
                 ToolDefinition.DataClassification.L2));
         register(tools, read("dormitory.get_capacity_summary.v1",
-                "读取楼栋或宿舍的聚合容量，不返回学生明细",
+                "目录兼容预留：当前助手运行时不执行容量查询",
                 CAPACITY_SUMMARY_INPUT_SCHEMA,
                 CAPACITY_SUMMARY_OUTPUT_SCHEMA,
                 Set.of("ai:assistant:use", "dormitory:read"),
                 ToolDefinition.DataClassification.L1));
         register(tools, read(
                 "notice.list_published.v1",
-                "检索已发布公告的纯文本摘要",
+                "目录兼容预留：当前助手运行时不执行公告列表查询",
                 NOTICE_LIST_INPUT_SCHEMA,
                 NOTICE_LIST_OUTPUT_SCHEMA,
                 Set.of("ai:assistant:use", "notice:read"),
                 ToolDefinition.DataClassification.L1));
         register(tools, proposal(
                 "repair.propose_assignment.v1",
-                "创建维修改派建议，绝不直接执行业务写入",
+                "服务端命令内部记录维修改派提案，绝不向 provider 开放",
                 REPAIR_PROPOSAL_INPUT_SCHEMA,
                 PROPOSAL_OUTPUT_SCHEMA,
                 Set.of("ai:repair:triage", "repair:read"),
                 ToolDefinition.DataClassification.L2));
         register(tools, proposal(
                 "notice.propose_draft.v1",
-                "创建公告草稿建议，绝不直接发布公告",
+                "服务端命令内部记录公告草稿提案，绝不向 provider 开放",
                 NOTICE_PROPOSAL_INPUT_SCHEMA,
                 PROPOSAL_OUTPUT_SCHEMA,
                 Set.of("ai:notice:draft", "notice:read"),
@@ -79,6 +86,34 @@ public final class ToolCatalog {
         return definitions;
     }
 
+    /** 当前仅由服务端固定上下文处理器同步执行；不等于向模型供应商开放 tool calling。 */
+    public Set<String> runtimeExecutableIds() {
+        return RUNTIME_EXECUTABLE_IDS;
+    }
+
+    /** 由确定性命令服务创建 proposal，不进入助手运行时工具循环。 */
+    public Set<String> internalProposalIds() {
+        return INTERNAL_PROPOSAL_IDS;
+    }
+
+    /** 为 v1 目录兼容保留，但当前没有用户路径或 handler，不得记录成执行成功。 */
+    public Set<String> reservedIds() {
+        return RESERVED_IDS;
+    }
+
+    /** 当前 provider adapter 不注册任何可回调工具。 */
+    public Set<String> providerCallableIds() {
+        return Set.of();
+    }
+
+    public ExecutionMode executionMode(String id) {
+        if (!definitions.containsKey(id)) throw new ToolDeniedException("未知或动态工具请求已拒绝");
+        if (RUNTIME_EXECUTABLE_IDS.contains(id)) return ExecutionMode.RUNTIME_CONTEXT;
+        if (INTERNAL_PROPOSAL_IDS.contains(id)) return ExecutionMode.INTERNAL_PROPOSAL;
+        if (RESERVED_IDS.contains(id)) return ExecutionMode.RESERVED;
+        throw new IllegalStateException("标准工具未声明执行模式: " + id);
+    }
+
     public ToolDefinition requireAuthorized(String requestedId, BusinessActorScope scope) {
         ToolDefinition definition = definitions.get(requestedId);
         if (definition == null) {
@@ -88,6 +123,13 @@ public final class ToolCatalog {
             throw new ToolDeniedException("工具权限校验未通过，请求已拒绝");
         }
         return definition;
+    }
+
+    public ToolDefinition requireRuntimeExecutable(String requestedId, BusinessActorScope scope) {
+        if (executionMode(requestedId) != ExecutionMode.RUNTIME_CONTEXT) {
+            throw new ToolDeniedException("AI_TOOL_NOT_RUNTIME_EXECUTABLE", "工具未向助手运行时开放");
+        }
+        return requireAuthorized(requestedId, scope);
     }
 
     private static ToolDefinition read(
@@ -145,23 +187,23 @@ public final class ToolCatalog {
             """;
 
     private static final String KNOWLEDGE_SEARCH_OUTPUT_SCHEMA = """
-            {"type":"object","properties":{"citations":{"type":"array","maxItems":20,"items":{"type":"object","properties":{"citationId":{"type":"string"},"text":{"type":"string","maxLength":4000}},"required":["citationId","text"],"additionalProperties":false}}},"required":["citations"],"additionalProperties":false}
+            {"type":"object","properties":{"grounded":{"type":"boolean"},"safetyState":{"type":"string","minLength":1,"maxLength":64},"citationsAsData":{"type":"string","maxLength":30000}},"required":["grounded","safetyState","citationsAsData"],"additionalProperties":false}
             """;
 
     private static final String DASHBOARD_QUERY_INPUT_SCHEMA = """
-            {"type":"object","properties":{"metricIds":{"type":"array","items":{"type":"string"},"minItems":1,"maxItems":20},"dateFrom":{"type":"string","format":"date"},"dateTo":{"type":"string","format":"date"},"dimensions":{"type":"array","items":{"type":"string"},"maxItems":5},"filters":{"type":"object","additionalProperties":{"type":"string"}}},"required":["metricIds","dateFrom","dateTo","dimensions","filters"],"additionalProperties":false}
+            {"type":"object","properties":{"queryId":{"type":"string","const":"dashboard.context.v1"},"parameters":{"type":"object","maxProperties":0,"additionalProperties":false}},"required":["queryId","parameters"],"additionalProperties":false}
             """;
 
     private static final String DASHBOARD_QUERY_OUTPUT_SCHEMA = """
-            {"type":"object","properties":{"schemaVersion":{"type":"string"},"asOf":{"type":"string","format":"date-time"},"results":{"type":"array","items":{"type":"object"}}},"required":["schemaVersion","asOf","results"],"additionalProperties":false}
+            {"type":"object","properties":{"cards":{"type":"array","maxItems":20,"items":{"type":"object","properties":{"title":{"type":"string","minLength":1,"maxLength":100},"value":{"type":"integer"},"unit":{"type":"string","maxLength":32}},"required":["title","value","unit"],"additionalProperties":false}}},"required":["cards"],"additionalProperties":false}
             """;
 
     private static final String REPAIR_CONTEXT_INPUT_SCHEMA = """
-            {"type":"object","properties":{"repairId":{"type":"integer","minimum":1}},"required":["repairId"],"additionalProperties":false}
+            {"type":"object","properties":{"queryId":{"type":"string","const":"repair.context.v1"},"parameters":{"type":"object","properties":{"repairOrderId":{"type":"string","pattern":"^[1-9][0-9]{0,18}$"}},"required":["repairOrderId"],"additionalProperties":false}},"required":["queryId","parameters"],"additionalProperties":false}
             """;
 
     private static final String REPAIR_CONTEXT_OUTPUT_SCHEMA = """
-            {"type":"object","properties":{"repairId":{"type":"integer"},"status":{"type":"string"},"category":{"type":"string"},"descriptionRedacted":{"type":"string","maxLength":4000},"locationToken":{"type":"string"},"snapshotHash":{"type":"string"}},"required":["repairId","status","category","descriptionRedacted","locationToken","snapshotHash"],"additionalProperties":false}
+            {"type":"object","properties":{"repairOrderId":{"type":"integer","minimum":1},"code":{"type":["string","null"],"maxLength":100},"type":{"type":["string","null"],"maxLength":100},"status":{"type":["string","null"],"maxLength":64},"description":{"type":["string","null"],"maxLength":4000},"assigneeUserId":{"type":["integer","null"],"minimum":1},"asOf":{"type":["string","null"],"format":"date-time"}},"required":["repairOrderId","code","type","status","description","assigneeUserId","asOf"],"additionalProperties":false}
             """;
 
     private static final String CAPACITY_SUMMARY_INPUT_SCHEMA = """
@@ -181,14 +223,20 @@ public final class ToolCatalog {
             """;
 
     private static final String REPAIR_PROPOSAL_INPUT_SCHEMA = """
-            {"type":"object","properties":{"repairId":{"type":"integer","minimum":1},"candidateUserId":{"type":"integer","minimum":1},"triageVersion":{"type":"string"},"snapshotHash":{"type":"string"}},"required":["repairId","candidateUserId","triageVersion","snapshotHash"],"additionalProperties":false}
+            {"type":"object","properties":{"payloadHash":{"type":"string","pattern":"^[0-9a-f]{64}$"},"targetType":{"type":"string","const":"REPAIR_ORDER"}},"required":["payloadHash","targetType"],"additionalProperties":false}
             """;
 
     private static final String NOTICE_PROPOSAL_INPUT_SCHEMA = """
-            {"type":"object","properties":{"title":{"type":"string","minLength":1,"maxLength":200},"content":{"type":"string","minLength":1,"maxLength":10000},"sourceRunId":{"type":"string"}},"required":["title","content","sourceRunId"],"additionalProperties":false}
+            {"type":"object","properties":{"payloadHash":{"type":"string","pattern":"^[0-9a-f]{64}$"},"targetType":{"type":"string","const":"NOTICE"}},"required":["payloadHash","targetType"],"additionalProperties":false}
             """;
 
     private static final String PROPOSAL_OUTPUT_SCHEMA = """
-            {"type":"object","properties":{"proposalId":{"type":"string"},"status":{"type":"string","const":"PENDING_REVIEW"}},"required":["proposalId","status"],"additionalProperties":false}
+            {"type":"object","properties":{"proposalId":{"type":"string","format":"uuid"},"state":{"type":"string","const":"PENDING_APPROVAL"}},"required":["proposalId","state"],"additionalProperties":false}
             """;
+
+    public enum ExecutionMode {
+        RUNTIME_CONTEXT,
+        INTERNAL_PROPOSAL,
+        RESERVED
+    }
 }

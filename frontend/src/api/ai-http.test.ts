@@ -654,6 +654,7 @@ describe('HttpAiClient', () => {
     const run = {
       id: 'run-stage4',
       parentRunId: null,
+      costStatus: 'FINAL',
       capability: 'REPAIR',
       state: 'SUCCEEDED',
       providerAlias: 'deterministic',
@@ -701,10 +702,11 @@ describe('HttpAiClient', () => {
           occurredAt: '2026-07-20T10:00:00Z' }],
       } as never)
 
-    const page = await client.listAuditRuns({ page: 1, pageSize: 20 })
+    const page = await client.listAuditRuns({ page: 1, pageSize: 20, costStatus: 'FINAL' })
     const detail = await client.getAuditRun('run-stage4')
 
-    expect(page.records[0]).toMatchObject({ citationCount: 1, chainHash })
+    expect(page.records[0]).toMatchObject({ citationCount: 1, chainHash, costStatus: 'FINAL' })
+    expect(apiRequest).toHaveBeenCalledWith('/api/ai/audit/runs?page=1&pageSize=20&costStatus=FINAL')
     expect(detail.run).toMatchObject({ citationCount: 1, chainHash, parentRunId: null })
     expect(detail.tools[0]).toMatchObject({ id: 'tool-1', toolName: 'AssignMaintainer' })
     expect(detail.citations[0]).toMatchObject({ id: 'citation-1', contentHash: payloadHash })

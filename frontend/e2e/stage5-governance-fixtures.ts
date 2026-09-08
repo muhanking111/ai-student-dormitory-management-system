@@ -11,7 +11,16 @@ import type {
   AiRiskState,
 } from '../src/types/ai'
 
-export const stage5AsOf = '2026-08-02T10:30:00+08:00'
+export const stage5ReferenceInstant = '2026-08-02T10:30:00+08:00'
+export const stage5AsOf = stage5ReferenceInstant
+
+const millisecondsPerDay = 24 * 60 * 60 * 1000
+const asiaShanghaiOffsetMilliseconds = 8 * 60 * 60 * 1000
+const stage5InstantAtDayOffset = (days: number) => new Date(
+  Date.parse(stage5ReferenceInstant) + days * millisecondsPerDay + asiaShanghaiOffsetMilliseconds,
+).toISOString().replace(/Z$/, '+08:00')
+const stage5ExpiredProposalInstant = stage5InstantAtDayOffset(-3)
+const stage5ActiveProposalExpiryInstant = stage5InstantAtDayOffset(10)
 
 const hash64 = (value: number) => value.toString(16).padStart(64, '0')
 
@@ -227,7 +236,7 @@ function createProposal(state: AiProposalState, index: number): AiProposalPrevie
     payloadHash: hash64(1_000 + ordinal),
     businessSnapshotHash: hash64(2_000 + ordinal),
     version: ordinal,
-    expiresAt: state === 'expired' ? '2026-07-30T10:30:00+08:00' : '2026-08-12T10:30:00+08:00',
+    expiresAt: state === 'expired' ? stage5ExpiredProposalInstant : stage5ActiveProposalExpiryInstant,
     riskLevel: riskSeverities[index % riskSeverities.length]!,
     evidence: {
       basis: 'deterministic',

@@ -78,7 +78,7 @@
 - `STALE / EXPIRED`：禁止批准，必须回来源页面刷新并重新预览。
 - `APPROVED`：仅表示审批完成，不代表业务成功。
 - execution `SUCCEEDED`：业务 Service 已确认写入成功。
-- `NEEDS_RECONCILIATION`：需要人工核对，不能静态显示成功。
+- `NEEDS_REVIEW`：业务执行结果需要人工核对，不能显示成功。`NEEDS_RECONCILIATION` 单独表示模型成本对账，不是业务执行状态。
 
 审计页默认显示脱敏元数据和 hash 链。读取必要正文需要独立权限、理由和再次审计；无权限时只显示安全范围不可用。
 

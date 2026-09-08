@@ -99,7 +99,7 @@ class AiConfigurationGovernanceValidationTest {
         AiApiException wrongVersion = assertThrows(AiApiException.class,
                 () -> service.activateToolCatalog(actor(),
                         AiConfigurationGovernanceService.toolCatalogPublicId(standard.hash()),
-                        "v2", standard.hash(), null, "a".repeat(64)));
+                        "v1", standard.hash(), null, "a".repeat(64)));
         assertEquals("AI_TOOL_CATALOG_NOT_ALLOWLISTED", wrongVersion.errorCode());
         AiApiException wrongHash = assertThrows(AiApiException.class,
                 () -> service.activateToolCatalog(actor(),

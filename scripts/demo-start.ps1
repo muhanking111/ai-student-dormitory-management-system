@@ -16,6 +16,11 @@ param(
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'demo-common.ps1')
 
+$demoLifecycleLock = Enter-DemoLifecycleLock
+try {
+if (-not $PreflightOnly -or (Test-Path -LiteralPath (Get-DemoRuntimeRoot))) {
+    Initialize-DemoProtectedDirectory (Get-DemoRuntimeRoot)
+}
 $profile = Get-DemoProfile $Mode
 Assert-DemoProfile $profile
 foreach ($tool in @('java', 'mvn', 'node', 'npm', 'docker')) { Assert-DemoTool $tool }
@@ -38,24 +43,26 @@ $composeEnvironment = Get-DemoComposeEnvironment -EnvValues $envValues -Profile 
     -MySqlPort $MySqlPort -RedisPort $RedisPort -MySqlImage $MySqlImage -RedisImage $RedisImage
 $adminUsername = Get-DemoRequiredValue $envValues 'BOOTSTRAP_ADMIN_USERNAME'
 $adminPassword = Get-DemoRequiredValue $envValues 'BOOTSTRAP_ADMIN_PASSWORD'
-$rolloutHmacKey = New-DemoEphemeralKey
-$auditHmacKey = New-DemoEphemeralKey
-$tokenizationHmacKey = New-DemoEphemeralKey
-$stepUpHmacKey = New-DemoEphemeralKey
 
+$existing = $null
 if (Test-Path -LiteralPath $statePath) {
     $existing = Read-DemoState
+    Assert-DemoStateIdentity $existing
+}
+$composeInventory = Get-DemoComposeResourceInventory
+Assert-DemoComposeOwnership -State $existing -Inventory $composeInventory
+if ($null -ne $existing) {
     if ($existing.status -eq 'running') {
-        throw "演示环境已记录为 running；请先运行 scripts/demo-health.ps1 或 scripts/demo-stop.ps1。"
-    }
-} else {
-    $existingContainers = @(Invoke-WithDemoEnvironment $composeEnvironment {
-        $containers = @(& docker compose -p (Get-DemoComposeProject) -f (Get-DemoComposeFile) ps -q)
-        if ($LASTEXITCODE -ne 0) { throw 'Docker daemon 不可用，无法检查演示容器归属。' }
-        return $containers
-    })
-    if ($existingContainers.Count -gt 0) {
-        throw '发现无状态文件归属的 dormitory-local-demo 容器；脚本拒绝接管，请人工核对。'
+        if (-not (Test-DemoStateStale $existing)) {
+            throw "演示环境仍有运行进程或端口；请先运行 scripts/demo-health.ps1 或 scripts/demo-stop.ps1。"
+        }
+        if (-not $PreflightOnly) {
+            $history = Join-Path $runtime 'state-history'
+            New-Item -ItemType Directory -Force -Path $history | Out-Null
+            Copy-Item -LiteralPath $statePath -Destination (Join-Path $history ((Get-Date -Format 'yyyyMMdd-HHmmss-ffff') + '.json'))
+            $existing.status = 'stale'
+            Write-DemoState $existing
+        }
     }
 }
 
@@ -74,17 +81,25 @@ $preflight = [ordered]@{
     productionResources = $false
     images = [ordered]@{ mysql = $MySqlImage; redis = $RedisImage }
 }
-if ($PreflightOnly) {
-    $preflight | ConvertTo-Json -Depth 6
-    return
-}
-
 foreach ($portEntry in @(
     @{ port = $BackendPort; name = '后端' },
     @{ port = $FrontendPort; name = '前端' },
     @{ port = $MySqlPort; name = 'MySQL' },
     @{ port = $RedisPort; name = 'Redis' }
 )) { Assert-DemoPortAvailable -Port $portEntry.port -Name $portEntry.name }
+if ($PreflightOnly) {
+    & docker info --format '{{.ServerVersion}}' 2>$null | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw 'Docker Desktop daemon 不可用；请启动 Docker Desktop 后重试。状态文件未被预检改写。' }
+    $preflight | ConvertTo-Json -Depth 6
+    return
+}
+
+# Windows DPAPI 按当前用户加密持久化；重启保留审计链验证能力，预检不生成密钥。
+$runtimeKeys = Get-DemoRuntimeKeys -Mode $Mode
+$rolloutHmacKey = $runtimeKeys.rollout
+$auditHmacKey = $runtimeKeys.audit
+$tokenizationHmacKey = $runtimeKeys.tokenization
+$stepUpHmacKey = $runtimeKeys.stepUp
 
 $frontendDirectory = Join-Path $root 'frontend'
 if (-not (Test-Path -LiteralPath (Join-Path $frontendDirectory 'node_modules') -PathType Container)) {
@@ -164,6 +179,8 @@ try {
     Wait-DemoAiSchema -ComposeEnvironment $composeEnvironment -Profile $profile -TimeoutSeconds 120
     Wait-DemoBootstrapPrompts -ComposeEnvironment $composeEnvironment -Profile $profile -TimeoutSeconds 120
     Invoke-DemoControlPlaneSeed -ComposeEnvironment $composeEnvironment -Profile $profile
+    Enable-DemoStandardToolCatalog -Backend "http://127.0.0.1:$BackendPort" `
+        -Frontend "http://127.0.0.1:$FrontendPort" -Username $adminUsername -Password $adminPassword
 
     $frontendEnvironment = @{
         VITE_AI_ENABLED = 'true'
@@ -223,4 +240,7 @@ try {
         Write-DemoState $state
     }
     throw
+}
+} finally {
+    Exit-DemoLifecycleLock $demoLifecycleLock
 }

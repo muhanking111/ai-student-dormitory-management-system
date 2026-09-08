@@ -1,7 +1,7 @@
 # 本地封版、GitHub 公开发布与可选预发布计划
 
 > 状态：`COMPLETED`（2026-08-11 Route A Stage 0-5.5 已完成；`rc-20260811.1` 因 CodeQL 告警失效，公开仓库、`rc-20260811.2` tag 和 Release 绑定最终公开提交）
-> 基线日期：2026-08-11
+> 基线日期：2026-08-11（历史 RC2）；2026-09-08 本地修复结果以 ai-verification.md 同日记录为准。
 > 推荐路线：先完成 Route A“本地可交付 Release Candidate + GitHub 公开发布”，再决定是否进入 Route B“真实预发布与生产门”
 > 当前事实：阶段 0-6、9 图 UI 高保真和用户肉眼验收已完成；真实供应商、生产外部依赖、生产写执行、部署与发布仍为 `NOT RUN / NOT APPROVED`
 > 计划公开仓库：`muhanking111/ai-student-dormitory-management-system`；全小写、使用连字符分词，名称直接表达项目用途
@@ -34,7 +34,7 @@
 ### 2.2 当前需要收口的工程问题
 
 - 空 `.git/` 已完成只读恢复审计并确认无历史；2026-08-11 已安全建立新仓库、净化公开历史，并创建 GitHub public 仓库与 `main`。
-- 前端 ESLint flat config 已补齐；Stage 3 已将 lint、全部前后端、真实基础设施、E2E、AI-live、六视口视觉、供应链、package 与哈希门绑定到 commit `ca297b68993a864229cab274ec412bf434512a30` 并通过。
+- 前端 ESLint flat config 已补齐；Stage 3 已将 lint、全部前后端、真实基础设施、E2E、AI-live、六视口视觉、供应链、package 与哈希门在中间候选 commit `ca297b68993a864229cab274ec412bf434512a30` 通过（历史过程，非当前候选）。
 - `rc-20260811.1` 公开后的 CodeQL run `31477640111` 发现 5 个告警，因此该不可移动候选已失效。修复提交 `18030b80238a9aba030843d816952b908526b97c` 的 CodeQL run `31478731800` 两个语言 job 均成功且 open alerts 为 0；随后从头重跑全部 Route A 工程门。当前 JAR、dist 和视觉 manifest SHA-256 分别为 `1FC8FBBB062E236AB5065E37B85F96E70531556EC299CE52F458888C7A39C4A6`、`1108939232ADD39167E9D068F2CF4C2A54CD7806844B95CC2CDBCDFDD513C5DB`、`9E31D3FD60F27A774D0BB7F7AF12F9954A1FC9DB5A749D21ABB663CAFD35DFEE`。
 - 现有测试、JAR 和视觉证据虽然存在，但任何源码、依赖、schema、OpenAPI 或构建配置变化都会使相关旧证据失效；正式封版必须重新生成同一候选的证据。
 - 当前真实模型合同 `RealModelContractIT` 未绑定本候选运行，真实供应商和 PR-01 至 PR-06 仍为 `NOT RUN / NOT APPROVED`。
@@ -69,7 +69,7 @@
 | `completed` | Stage 0 基线与仓库身份审计 | 固定当前范围、文件边界、证据新鲜度和 Git 根因 | 基线审计、仓库恢复决策、敏感文件清单 | 已确认空 `.git/` 无可恢复历史；源码和原型未修改 |
 | `completed` | Stage 1 Git 恢复与版本身份 | 建立可用、可追溯且不泄密的本地版本控制 | 可用 Git 仓库、初始 RC commit、tag 方案、范围清单 | 根提交已创建；`git status`/`git log` 可用，敏感和生成文件均被排除 |
 | `completed` | Stage 2 前端 lint 质量门 | 补齐 ESLint，并在不弱化规则的前提下关闭当前问题 | ESLint 配置、`npm run lint`、聚焦测试 | lint 0 error；Vitest/coverage/typecheck/build 与依赖审计通过 |
-| `completed` | Stage 3 RC 全量验证与制品锁定 | 对同一源码候选重跑全部本地质量门并生成哈希 | JAR、前端 dist、测试/覆盖率/E2E/视觉报告、RC manifest | commit `ca297b6` 授权范围内质量门全部 PASS；NOT RUN 准确 |
+| `completed` | Stage 3 RC 全量验证与制品锁定 | 对同一源码候选重跑全部本地质量门并生成哈希 | JAR、前端 dist、测试/覆盖率/E2E/视觉报告、RC manifest | 中间 ca297b6 及后续 RC2 的历史质量门；本轮必须引用同日新证据 |
 | `completed` | Stage 4 一键本地演示环境 | 在干净机器上可启动、重置、验证和停止 | 启停/健康/重置脚本、演示数据、演示账号说明 | 两种模式启动/健康/停止/reset/重启均通过，Fake provider 与隔离目标保持不变 |
 | `completed` | Stage 5 演示验收与交付包 | 形成答辩/交付所需文档、演示流程和回滚说明 | 用户手册、运维速查、演示清单、发布说明、已知限制 | clean clone、新终端、桌面/移动关键页、异常态、停止与恢复演练全部通过 |
 | `completed` | Stage 5.5 GitHub 公开发布门 | 在远程创建前完成全部公开审查，通过后直接创建 public 仓库并首次推送 | 公开文件白名单、许可证、安全策略、敏感扫描、GitHub 仓库、tag/Release | `Apache-2.0`；远程内容与本地 RC 一致，公开扫描无违规，仓库可访问 |
@@ -452,7 +452,7 @@ gh repo create muhanking111/ai-student-dormitory-management-system `
 ### Route A 公开完成标准
 
 - Stage 0-5.5 全部 `completed`。
-- 本地 RC、远程默认分支、tag 和 Release 绑定同一 commit。
+- 发布当时 RC、默认分支、tag 与 Release 同 commit；main 后续提交不移动旧 tag，当前发布声明必须分别注明身份。
 - 公开仓库检查、敏感扫描、许可证和安全策略全部完成。
 - 仓库可由未登录浏览器访问，README 能独立指导本地运行。
 - 生产外部门仍准确保持 `NOT RUN / NOT APPROVED`。
@@ -551,9 +551,11 @@ gh repo create muhanking111/ai-student-dormitory-management-system `
 
 只有 Route B Stage 6-8、PR-01 至 PR-06、真实供应商合同、真实基础设施、备份恢复、压测、灰度和正式批准全部完成后，才允许声明“生产放行”。Route A 完成不能自动升级为生产完成。
 
-## 18. 推荐的立即下一步
+## 18. 历史首次发布执行步骤（已执行，不得重新建仓库）
 
-按以下顺序启动执行：
+以下仅保留首次建仓历史。当前维护应执行必要修复、同源验证和文档归一；本轮不新增 tag/Release，也不进入 Route B。
+
+历史顺序：
 
 1. 建立新的活动 `.planning` 任务并把 Stage 0 标记为 `in_progress`。
 2. 只读诊断当前空 `.git/`，确认是否存在历史恢复来源。

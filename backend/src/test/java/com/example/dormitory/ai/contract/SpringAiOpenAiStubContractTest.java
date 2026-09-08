@@ -69,6 +69,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 })
 class SpringAiOpenAiStubContractTest {
 
+    private final com.example.dormitory.ai.governance.StandardToolCatalogManifest standardCatalog =
+            new com.example.dormitory.ai.governance.StandardToolCatalogManifest(
+                    com.example.dormitory.ai.tool.ToolCatalog.standard(), new com.fasterxml.jackson.databind.ObjectMapper());
+
     private static final HttpServer SERVER = startServer();
     private static final AtomicInteger RETRY_REQUESTS = new AtomicInteger();
     private static final AtomicBoolean TOOL_REQUEST_DISABLED_THINKING = new AtomicBoolean();
@@ -115,9 +119,9 @@ class SpringAiOpenAiStubContractTest {
                 + "activated_at=CURRENT_TIMESTAMP WHERE prompt_key='assistant.system' AND version='v1'");
         jdbc.update("INSERT INTO ai_tool_catalog_version "
                         + "(version, manifest_text, manifest_hash, status, active_slot_key, activated_at, created_at, updated_at) "
-                        + "VALUES ('stub-v1', '{\"tools\":[]}', ?, 'ACTIVE', 'runtime', CURRENT_TIMESTAMP, "
+                        + "VALUES (?, ?, ?, 'ACTIVE', 'runtime', CURRENT_TIMESTAMP, "
                         + "CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
-                "c".repeat(64));
+                standardCatalog.version(), standardCatalog.manifest(), standardCatalog.hash());
         jdbc.update("INSERT INTO ai_quota_policy "
                         + "(scope_type, scope_key, capability, daily_token_limit, monthly_cost_limit, "
                         + "concurrent_run_limit, status, effective_from, created_at, updated_at) "
